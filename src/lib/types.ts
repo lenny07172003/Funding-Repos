@@ -43,7 +43,7 @@ export interface PersonalInfo {
 
 export interface FundingApplication {
   id: string;
-  type: "credit_card" | "line_of_credit" | "term_loan" | "alternative_lending";
+  type: "credit_card" | "line_of_credit" | "term_loan" | "mca" | "equipment_financing";
   lender: string;
   product: string;
   amount: number | null;

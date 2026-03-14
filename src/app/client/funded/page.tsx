@@ -43,7 +43,8 @@ export default function FundedPage() {
     credit_card: "Business Credit Card",
     line_of_credit: "Line of Credit",
     term_loan: "Term Loan",
-    alternative_lending: "Alternative Lending",
+    mca: "MCA",
+    equipment_financing: "Equipment Financing",
   };
 
   return (

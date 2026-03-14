@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navItems = [
+  { href: "/admin", label: "Dashboard", exact: true },
   { href: "/admin/clients", label: "All Clients" },
   { href: "/admin/onboard", label: "Onboard New Client" },
 ];
@@ -26,7 +27,9 @@ export default function AdminNav() {
           </Link>
           <div className="flex items-center gap-1">
             {navItems.map((item) => {
-              const active = pathname === item.href || (isClientDetail && item.href === "/admin/clients");
+              const active = item.exact
+                ? pathname === item.href
+                : pathname === item.href || (isClientDetail && item.href === "/admin/clients");
               return (
                 <Link
                   key={item.href}

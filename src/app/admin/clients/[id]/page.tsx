@@ -19,7 +19,8 @@ const appTypes = [
   { value: "credit_card", label: "Business Credit Card" },
   { value: "line_of_credit", label: "Line of Credit" },
   { value: "term_loan", label: "Term Loan" },
-  { value: "alternative_lending", label: "Alternative Lending" },
+  { value: "mca", label: "MCA" },
+  { value: "equipment_financing", label: "Equipment Financing" },
 ];
 
 const appStatuses = [
