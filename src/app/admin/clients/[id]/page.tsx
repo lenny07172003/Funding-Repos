@@ -40,6 +40,8 @@ export default function ClientDetailPage() {
   const [saved, setSaved] = useState(false);
   const [apiKey, setApiKeyState] = useState("");
   const [apiProvider, setApiProviderState] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
 
   useEffect(() => {
     const c = getClient(params.id as string);
@@ -149,7 +151,31 @@ export default function ClientDetailPage() {
     save(updated);
   }
 
+  function sendOnboardingEmail() {
+    if (!client || !client.personalInfo.email) {
+      alert("Client must have an email address to send the onboarding link.");
+      return;
+    }
+    setEmailSending(true);
+    // Simulate email sending
+    setTimeout(() => {
+      const updated = {
+        ...client,
+        onboardingStatus: (client.onboardingStatus === "not_started" ? "agreement_sent" : client.onboardingStatus) as Client["onboardingStatus"],
+        onboardingEmailSentAt: new Date().toISOString(),
+      };
+      save(updated);
+      setEmailSending(false);
+      setEmailSent(true);
+      setTimeout(() => setEmailSent(false), 4000);
+    }, 1500);
+  }
+
   if (!client) return null;
+
+  const onboardingLink = `${typeof window !== "undefined" ? window.location.origin : ""}/onboard/${client.id}`;
+  const steps = client.onboardingCompletedSteps || { agreement: false, businessForm: false, creditMonitoring: false };
+  const completedStepCount = [steps.agreement, steps.businessForm, steps.creditMonitoring].filter(Boolean).length;
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "credit", label: "Credit Profile" },
@@ -230,6 +256,162 @@ export default function ClientDetailPage() {
           <p className="text-xs text-gray-500 uppercase tracking-wider">Documents</p>
           <p className="text-2xl font-bold text-gray-900">{client.documents.length}</p>
         </div>
+      </div>
+
+      {/* Client Onboarding Panel */}
+      <div className="bg-white border border-gray-200 rounded-lg p-5">
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-brand-100 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Client Onboarding</h3>
+              <p className="text-sm text-gray-500">
+                Send the client access to their dashboard to complete onboarding
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={sendOnboardingEmail}
+            disabled={emailSending || !client.personalInfo.email}
+            className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {emailSending ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Sending...
+              </>
+            ) : emailSent ? (
+              <>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Email Sent!
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+                {client.onboardingEmailSentAt ? "Resend Onboarding Email" : "Send Onboarding Email"}
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Onboarding Link Preview */}
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Client Onboarding Link</p>
+              <p className="text-sm font-mono text-brand-700 break-all">{onboardingLink}</p>
+            </div>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(onboardingLink);
+                setSaved(true);
+                setTimeout(() => setSaved(false), 2000);
+              }}
+              className="btn-secondary text-xs px-3 py-1.5 shrink-0 ml-3"
+            >
+              Copy Link
+            </button>
+          </div>
+        </div>
+
+        {/* Onboarding Progress */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className={`rounded-lg border p-3 ${steps.agreement ? "bg-emerald-50 border-emerald-200" : "bg-gray-50 border-gray-200"}`}>
+            <div className="flex items-center gap-2 mb-1">
+              {steps.agreement ? (
+                <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <div className="w-4 h-4 rounded-full border-2 border-gray-300" />
+              )}
+              <span className={`text-xs font-semibold ${steps.agreement ? "text-emerald-700" : "text-gray-600"}`}>
+                Step 1
+              </span>
+            </div>
+            <p className={`text-sm font-medium ${steps.agreement ? "text-emerald-800" : "text-gray-700"}`}>
+              Funding Agreement
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {steps.agreement
+                ? `Signed ${client.agreementSignature?.dateSigned ? new Date(client.agreementSignature.dateSigned).toLocaleDateString() : ""}`
+                : "Not signed yet"}
+            </p>
+          </div>
+
+          <div className={`rounded-lg border p-3 ${steps.businessForm ? "bg-emerald-50 border-emerald-200" : "bg-gray-50 border-gray-200"}`}>
+            <div className="flex items-center gap-2 mb-1">
+              {steps.businessForm ? (
+                <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <div className="w-4 h-4 rounded-full border-2 border-gray-300" />
+              )}
+              <span className={`text-xs font-semibold ${steps.businessForm ? "text-emerald-700" : "text-gray-600"}`}>
+                Step 2
+              </span>
+            </div>
+            <p className={`text-sm font-medium ${steps.businessForm ? "text-emerald-800" : "text-gray-700"}`}>
+              Business Funding Form
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {steps.businessForm ? "Completed" : "Not submitted yet"}
+            </p>
+          </div>
+
+          <div className={`rounded-lg border p-3 ${steps.creditMonitoring ? "bg-emerald-50 border-emerald-200" : "bg-gray-50 border-gray-200"}`}>
+            <div className="flex items-center gap-2 mb-1">
+              {steps.creditMonitoring ? (
+                <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <div className="w-4 h-4 rounded-full border-2 border-gray-300" />
+              )}
+              <span className={`text-xs font-semibold ${steps.creditMonitoring ? "text-emerald-700" : "text-gray-600"}`}>
+                Step 3
+              </span>
+            </div>
+            <p className={`text-sm font-medium ${steps.creditMonitoring ? "text-emerald-800" : "text-gray-700"}`}>
+              Credit Monitoring
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {steps.creditMonitoring ? `Active — ${client.creditMonitoringProvider || "Provider set"}` : "Not activated"}
+            </p>
+          </div>
+        </div>
+
+        {/* Progress Bar */}
+        <div className="mt-3">
+          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+            <span>Onboarding Progress</span>
+            <span>{completedStepCount}/3 completed</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="bg-emerald-500 h-2 rounded-full transition-all"
+              style={{ width: `${(completedStepCount / 3) * 100}%` }}
+            />
+          </div>
+        </div>
+
+        {client.onboardingEmailSentAt && (
+          <p className="text-xs text-gray-400 mt-3">
+            Last sent: {new Date(client.onboardingEmailSentAt).toLocaleString()} to {client.personalInfo.email}
+          </p>
+        )}
       </div>
 
       {/* Tab Navigation */}

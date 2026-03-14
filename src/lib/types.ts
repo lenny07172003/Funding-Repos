@@ -62,6 +62,13 @@ export interface Document {
   status: "pending" | "reviewed" | "approved" | "rejected";
 }
 
+export interface AgreementSignature {
+  fullName: string;
+  signatureData: string; // base64 or typed name as signature
+  dateSigned: string;
+  ipAddress: string;
+}
+
 export interface Client {
   id: string;
   personalInfo: PersonalInfo;
@@ -74,6 +81,17 @@ export interface Client {
   totalFunded: number;
   totalApproved: number;
   notes: string;
+  agreementSignature: AgreementSignature | null;
+  creditMonitoringStatus: "not_started" | "pending" | "active" | "inactive";
+  creditMonitoringProvider: string;
+  creditMonitoringUsername: string;
+  creditMonitoringPassword: string;
+  onboardingEmailSentAt: string | null;
+  onboardingCompletedSteps: {
+    agreement: boolean;
+    businessForm: boolean;
+    creditMonitoring: boolean;
+  };
 }
 
 export interface Lender {
