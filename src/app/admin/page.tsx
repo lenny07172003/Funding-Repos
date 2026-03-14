@@ -21,6 +21,7 @@ const TYPE_LABELS: Record<string, string> = {
   term_loan: "Term Loans",
   mca: "MCA",
   equipment_financing: "Equipment Financing",
+  sba: "SBA Loans",
 };
 
 function getFilterDate(filter: TimeFilter, customDate?: string): Date | null {

@@ -21,6 +21,7 @@ const appTypes = [
   { value: "term_loan", label: "Term Loan" },
   { value: "mca", label: "MCA" },
   { value: "equipment_financing", label: "Equipment Financing" },
+  { value: "sba", label: "SBA Loan" },
 ];
 
 const appStatuses = [
@@ -486,7 +487,7 @@ export default function ClientDetailPage() {
           </div>
 
           {/* Summary by Type */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {appTypes.map((type) => {
               const apps = client.fundingApplications.filter((a) => a.type === type.value);
               const funded = apps.filter((a) => a.status === "funded").reduce((s, a) => s + (a.amount || 0), 0);

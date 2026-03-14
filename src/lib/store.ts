@@ -1,6 +1,6 @@
 "use client";
 
-import { Client, CreditBureauData } from "./types";
+import { Client, CreditBureauData, Lender, ApplicationType } from "./types";
 
 const STORAGE_KEY = "funding_crm_data";
 
@@ -114,4 +114,74 @@ export function getApiProvider(): string {
 export function setApiProvider(provider: string) {
   if (typeof window === "undefined") return;
   localStorage.setItem(API_PROVIDER_STORAGE, provider);
+}
+
+// Lender storage
+const LENDER_STORAGE = "funding_crm_lenders";
+
+export function createEmptyLender(id?: string): Lender {
+  return {
+    id: id || crypto.randomUUID(),
+    name: "",
+    logo: "",
+    description: "",
+    website: "",
+    apiKey: "",
+    apiEndpoint: "",
+    apiSecret: "",
+    status: "disconnected",
+    supportedProducts: [],
+    minCreditScore: null,
+    maxLoanAmount: null,
+    minLoanAmount: null,
+    interestRateRange: "",
+    termRange: "",
+    avgApprovalTime: "",
+    totalFunded: 0,
+    totalDeals: 0,
+    approvalRate: null,
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
+    notes: "",
+    connectedAt: null,
+    lastSyncAt: null,
+    webhookUrl: "",
+    sandboxMode: true,
+  };
+}
+
+export function getLenders(): Lender[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(LENDER_STORAGE);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export function saveLenders(lenders: Lender[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(LENDER_STORAGE, JSON.stringify(lenders));
+}
+
+export function getLender(id: string): Lender | undefined {
+  return getLenders().find((l) => l.id === id);
+}
+
+export function upsertLender(lender: Lender) {
+  const lenders = getLenders();
+  const idx = lenders.findIndex((l) => l.id === lender.id);
+  if (idx >= 0) {
+    lenders[idx] = lender;
+  } else {
+    lenders.push(lender);
+  }
+  saveLenders(lenders);
+}
+
+export function deleteLender(id: string) {
+  saveLenders(getLenders().filter((l) => l.id !== id));
 }

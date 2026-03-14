@@ -43,7 +43,7 @@ export interface PersonalInfo {
 
 export interface FundingApplication {
   id: string;
-  type: "credit_card" | "line_of_credit" | "term_loan" | "mca" | "equipment_financing";
+  type: "credit_card" | "line_of_credit" | "term_loan" | "mca" | "equipment_financing" | "sba";
   lender: string;
   product: string;
   amount: number | null;
@@ -74,6 +74,36 @@ export interface Client {
   totalFunded: number;
   totalApproved: number;
   notes: string;
+}
+
+export interface Lender {
+  id: string;
+  name: string;
+  logo: string; // emoji or initials as placeholder
+  description: string;
+  website: string;
+  apiKey: string;
+  apiEndpoint: string;
+  apiSecret: string;
+  status: "connected" | "disconnected" | "pending" | "error";
+  supportedProducts: ApplicationType[];
+  minCreditScore: number | null;
+  maxLoanAmount: number | null;
+  minLoanAmount: number | null;
+  interestRateRange: string;
+  termRange: string;
+  avgApprovalTime: string;
+  totalFunded: number;
+  totalDeals: number;
+  approvalRate: number | null;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+  notes: string;
+  connectedAt: string | null;
+  lastSyncAt: string | null;
+  webhookUrl: string;
+  sandboxMode: boolean;
 }
 
 export type ApplicationType = FundingApplication["type"];
