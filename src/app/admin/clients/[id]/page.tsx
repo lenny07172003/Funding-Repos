@@ -668,6 +668,124 @@ export default function ClientDetailPage() {
             <button onClick={addApplication} className="btn-primary">+ Add Application</button>
           </div>
 
+          {/* Pipeline Overview — at-a-glance status counts */}
+          {client.fundingApplications.length > 0 && (() => {
+            const apps = client.fundingApplications;
+            const pending = apps.filter((a) => a.status === "pending");
+            const applied = apps.filter((a) => a.status === "applied");
+            const approved = apps.filter((a) => a.status === "approved");
+            const funded = apps.filter((a) => a.status === "funded");
+            const denied = apps.filter((a) => a.status === "denied");
+            const totalAmt = funded.reduce((s, a) => s + (a.amount || 0), 0);
+            const allDone = apps.length > 0 && apps.every((a) => a.status === "funded" || a.status === "denied");
+            return (
+              <>
+                {/* Overall Status Banner */}
+                <div className={`rounded-lg border p-4 flex items-center gap-3 ${
+                  allDone && funded.length > 0
+                    ? "bg-emerald-50 border-emerald-200"
+                    : allDone && funded.length === 0
+                    ? "bg-red-50 border-red-200"
+                    : "bg-brand-50 border-brand-200"
+                }`}>
+                  {allDone && funded.length > 0 ? (
+                    <svg className="w-6 h-6 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-6 h-6 text-brand-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  )}
+                  <div className="flex-1">
+                    <p className={`font-semibold ${allDone && funded.length > 0 ? "text-emerald-800" : "text-brand-900"}`}>
+                      {allDone && funded.length > 0
+                        ? `All applications complete — $${totalAmt.toLocaleString()} funded across ${funded.length} deal${funded.length > 1 ? "s" : ""}`
+                        : allDone && funded.length === 0
+                        ? "All applications have been decided — none funded"
+                        : `${apps.length} application${apps.length > 1 ? "s" : ""} in pipeline — ${funded.length} funded, ${pending.length + applied.length + approved.length} in progress`}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Pipeline Stage Counts */}
+                <div className="grid grid-cols-5 gap-3">
+                  {[
+                    { label: "Pending", count: pending.length, color: "text-gray-600", bg: "bg-gray-100", border: "border-gray-200" },
+                    { label: "Applied", count: applied.length, color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200" },
+                    { label: "Approved", count: approved.length, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-200" },
+                    { label: "Funded", count: funded.length, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200" },
+                    { label: "Denied", count: denied.length, color: "text-red-600", bg: "bg-red-50", border: "border-red-200" },
+                  ].map((stage) => (
+                    <div key={stage.label} className={`rounded-lg border p-3 text-center ${stage.count > 0 ? `${stage.bg} ${stage.border}` : "bg-gray-50 border-gray-100"}`}>
+                      <div className={`text-2xl font-bold ${stage.count > 0 ? stage.color : "text-gray-300"}`}>
+                        {stage.count}
+                      </div>
+                      <div className="text-xs font-medium text-gray-500">{stage.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Compact Application Status Table */}
+                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                    <h4 className="text-sm font-semibold text-gray-700">All Applications — Quick View</h4>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-gray-500 border-b border-gray-100 bg-gray-50">
+                          <th className="px-4 py-2 font-medium">#</th>
+                          <th className="px-4 py-2 font-medium">Type</th>
+                          <th className="px-4 py-2 font-medium">Lender</th>
+                          <th className="px-4 py-2 font-medium">Product</th>
+                          <th className="px-4 py-2 font-medium text-right">Amount</th>
+                          <th className="px-4 py-2 font-medium">Status</th>
+                          <th className="px-4 py-2 font-medium">Applied</th>
+                          <th className="px-4 py-2 font-medium">Funded</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {apps.map((app, i) => {
+                          const statusStyles: Record<string, string> = {
+                            pending: "bg-gray-100 text-gray-700",
+                            applied: "bg-blue-100 text-blue-800",
+                            approved: "bg-amber-100 text-amber-800",
+                            funded: "bg-emerald-100 text-emerald-800",
+                            denied: "bg-red-100 text-red-800",
+                          };
+                          const typeLabel = appTypes.find((t) => t.value === app.type)?.label || app.type;
+                          return (
+                            <tr key={app.id} className="border-b border-gray-50 hover:bg-gray-50">
+                              <td className="px-4 py-2.5 text-gray-400 font-medium">{i + 1}</td>
+                              <td className="px-4 py-2.5 text-gray-700">{typeLabel}</td>
+                              <td className="px-4 py-2.5 text-gray-800 font-medium">{app.lender || "—"}</td>
+                              <td className="px-4 py-2.5 text-gray-600">{app.product || "—"}</td>
+                              <td className="px-4 py-2.5 text-right font-medium text-gray-900">
+                                {app.amount ? `$${app.amount.toLocaleString()}` : "—"}
+                              </td>
+                              <td className="px-4 py-2.5">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${statusStyles[app.status]}`}>
+                                  {app.status.charAt(0).toUpperCase() + app.status.slice(1)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2.5 text-gray-500 text-xs">
+                                {app.appliedDate ? new Date(app.appliedDate).toLocaleDateString() : "—"}
+                              </td>
+                              <td className="px-4 py-2.5 text-gray-500 text-xs">
+                                {app.fundedDate ? new Date(app.fundedDate).toLocaleDateString() : "—"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+
           {/* Summary by Type */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {appTypes.map((type) => {
