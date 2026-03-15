@@ -60,6 +60,10 @@ export interface Document {
   type: string;
   uploadedAt: string;
   status: "pending" | "reviewed" | "approved" | "rejected";
+  fileName: string;
+  fileData: string; // base64 encoded file data
+  fileSize: number;
+  source: "admin" | "client" | "requested";
 }
 
 export interface AgreementSignature {

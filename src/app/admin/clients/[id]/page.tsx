@@ -917,144 +917,167 @@ export default function ClientDetailPage() {
       )}
 
       {/* DOCUMENTS TAB */}
-      {activeTab === "documents" && (
+      {activeTab === "documents" && (() => {
+        const DOC_TYPE_LABELS: Record<string, string> = {
+          bank_statement: "Bank Statement",
+          tax_return: "Tax Return",
+          business_license: "Business License",
+          articles_of_incorporation: "Articles of Inc.",
+          ein_letter: "EIN Letter",
+          drivers_license: "Driver's License",
+          voided_check: "Voided Check",
+          profit_loss: "P&L Statement",
+          balance_sheet: "Balance Sheet",
+          credit_report: "Credit Report",
+          funding_agreement: "Funding Agreement",
+          other: "Other",
+        };
+
+        const REQUIRED_DOCS = [
+          { name: "Bank Statements (3 months)", type: "bank_statement" },
+          { name: "Tax Return - Most Recent", type: "tax_return" },
+          { name: "Business License", type: "business_license" },
+          { name: "Articles of Incorporation", type: "articles_of_incorporation" },
+          { name: "EIN Letter (CP 575)", type: "ein_letter" },
+          { name: "Driver's License", type: "drivers_license" },
+          { name: "Voided Check", type: "voided_check" },
+          { name: "P&L Statement", type: "profit_loss" },
+        ];
+
+        function formatFileSize(bytes: number): string {
+          if (bytes === 0) return "0 B";
+          const k = 1024;
+          const sizes = ["B", "KB", "MB"];
+          const i = Math.floor(Math.log(bytes) / Math.log(k));
+          return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+        }
+
+        function handleFileUpload(files: FileList | null, docId?: string) {
+          if (!files || files.length === 0 || !client) return;
+          Array.from(files).forEach((file) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const base64 = reader.result as string;
+              if (docId) {
+                // Attach file to existing document
+                const updated = { ...client };
+                const doc = updated.documents.find((d) => d.id === docId);
+                if (doc) {
+                  doc.fileName = file.name;
+                  doc.fileData = base64;
+                  doc.fileSize = file.size;
+                  doc.uploadedAt = new Date().toISOString();
+                  doc.source = "admin";
+                }
+                save(updated);
+              } else {
+                // Create new document from uploaded file
+                const ext = file.name.split(".").pop()?.toLowerCase() || "";
+                let docType = "other";
+                if (ext === "pdf" || file.name.toLowerCase().includes("statement")) docType = "bank_statement";
+                if (file.name.toLowerCase().includes("tax") || file.name.toLowerCase().includes("1040")) docType = "tax_return";
+                if (file.name.toLowerCase().includes("license")) docType = "business_license";
+
+                const newDoc = {
+                  id: crypto.randomUUID(),
+                  name: file.name.replace(/\.[^/.]+$/, ""),
+                  type: docType,
+                  uploadedAt: new Date().toISOString(),
+                  status: "pending" as const,
+                  fileName: file.name,
+                  fileData: base64,
+                  fileSize: file.size,
+                  source: "admin" as const,
+                };
+                const updated = { ...client, documents: [...client.documents, newDoc] };
+                save(updated);
+              }
+            };
+            reader.readAsDataURL(file);
+          });
+        }
+
+        function requestAllDocuments() {
+          if (!client) return;
+          const existing = client.documents.map((d) => d.name);
+          const newDocs = REQUIRED_DOCS.filter((r) => !existing.includes(r.name)).map((r) => ({
+            id: crypto.randomUUID(),
+            name: r.name,
+            type: r.type,
+            uploadedAt: new Date().toISOString(),
+            status: "pending" as const,
+            fileName: "",
+            fileData: "",
+            fileSize: 0,
+            source: "requested" as const,
+          }));
+          if (newDocs.length === 0) {
+            alert("All standard documents have already been requested.");
+            return;
+          }
+          const updated = { ...client, documents: [...client.documents, ...newDocs] };
+          save(updated);
+        }
+
+        return (
         <div className="space-y-4">
-          {/* Add Document Form */}
-          <div className="card p-6 bg-brand-50 border-brand-200">
-            <h3 className="font-semibold text-brand-900 mb-3">Add Document to Client</h3>
-            <p className="text-sm text-brand-700 mb-4">
-              Upload or create a document entry that will appear in the client&apos;s portal
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-              <div className="md:col-span-4">
-                <label className="label">Document Name *</label>
+          {/* Top Actions Bar */}
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-lg text-gray-900">Documents</h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={requestAllDocuments}
+                className="btn-secondary flex items-center gap-2 text-sm"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                Request All Documents
+              </button>
+              <label className="btn-primary flex items-center gap-2 text-sm cursor-pointer">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Upload Files
                 <input
-                  id="doc-name"
-                  className="input-field"
-                  placeholder="e.g. Bank Statements - March 2026"
+                  type="file"
+                  multiple
+                  className="hidden"
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.csv"
+                  onChange={(e) => handleFileUpload(e.target.files)}
                 />
-              </div>
-              <div className="md:col-span-3">
-                <label className="label">Document Type *</label>
-                <select id="doc-type" className="input-field" defaultValue="">
-                  <option value="" disabled>Select type...</option>
-                  <option value="bank_statement">Bank Statement</option>
-                  <option value="tax_return">Tax Return</option>
-                  <option value="business_license">Business License</option>
-                  <option value="articles_of_incorporation">Articles of Incorporation</option>
-                  <option value="ein_letter">EIN Letter</option>
-                  <option value="drivers_license">Driver&apos;s License</option>
-                  <option value="voided_check">Voided Check</option>
-                  <option value="profit_loss">Profit &amp; Loss Statement</option>
-                  <option value="balance_sheet">Balance Sheet</option>
-                  <option value="credit_report">Credit Report</option>
-                  <option value="funding_agreement">Funding Agreement</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <div className="md:col-span-3">
-                <label className="label">Status</label>
-                <select id="doc-status" className="input-field" defaultValue="pending">
-                  <option value="pending">Pending Review</option>
-                  <option value="reviewed">Reviewed</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                </select>
-              </div>
-              <div className="md:col-span-2 flex items-end">
-                <button
-                  onClick={() => {
-                    const nameEl = document.getElementById("doc-name") as HTMLInputElement;
-                    const typeEl = document.getElementById("doc-type") as HTMLSelectElement;
-                    const statusEl = document.getElementById("doc-status") as HTMLSelectElement;
-                    if (!nameEl.value.trim() || !typeEl.value) {
-                      alert("Please enter a document name and select a type.");
-                      return;
-                    }
-                    const newDoc = {
-                      id: crypto.randomUUID(),
-                      name: nameEl.value.trim(),
-                      type: typeEl.value,
-                      uploadedAt: new Date().toISOString(),
-                      status: statusEl.value as "pending" | "reviewed" | "approved" | "rejected",
-                    };
-                    const updated = { ...client, documents: [...client.documents, newDoc] };
-                    save(updated);
-                    nameEl.value = "";
-                    typeEl.value = "";
-                    statusEl.value = "pending";
-                  }}
-                  className="btn-primary w-full"
-                >
-                  + Add
-                </button>
-              </div>
+              </label>
             </div>
           </div>
 
-          {/* Quick Add Common Documents */}
-          <div className="card p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <h4 className="text-sm font-semibold text-gray-700">Quick Add</h4>
-              <span className="text-xs text-gray-400">Click to add common document requests</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { name: "Bank Statements (3 months)", type: "bank_statement" },
-                { name: "Tax Return - Most Recent", type: "tax_return" },
-                { name: "Business License", type: "business_license" },
-                { name: "Articles of Incorporation", type: "articles_of_incorporation" },
-                { name: "EIN Letter (CP 575)", type: "ein_letter" },
-                { name: "Driver's License", type: "drivers_license" },
-                { name: "Voided Check", type: "voided_check" },
-                { name: "P&L Statement", type: "profit_loss" },
-              ].map((item) => (
-                <button
-                  key={item.name}
-                  onClick={() => {
-                    const exists = client.documents.some((d) => d.name === item.name);
-                    if (exists) return;
-                    const newDoc = {
-                      id: crypto.randomUUID(),
-                      name: item.name,
-                      type: item.type,
-                      uploadedAt: new Date().toISOString(),
-                      status: "pending" as const,
-                    };
-                    const updated = { ...client, documents: [...client.documents, newDoc] };
-                    save(updated);
-                  }}
-                  className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                    client.documents.some((d) => d.name === item.name)
-                      ? "bg-emerald-50 border-emerald-200 text-emerald-700 cursor-default"
-                      : "bg-white border-gray-200 text-gray-600 hover:border-brand-300 hover:text-brand-700"
-                  }`}
-                >
-                  {client.documents.some((d) => d.name === item.name) ? (
-                    <span className="flex items-center gap-1">
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      {item.name}
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1">
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      {item.name}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
+          {/* Drag & Drop Upload Zone */}
+          <div
+            className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-brand-400 hover:bg-brand-50 transition-all cursor-pointer"
+            onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("border-brand-400", "bg-brand-50"); }}
+            onDragLeave={(e) => { e.currentTarget.classList.remove("border-brand-400", "bg-brand-50"); }}
+            onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove("border-brand-400", "bg-brand-50"); handleFileUpload(e.dataTransfer.files); }}
+            onClick={() => {
+              const input = document.createElement("input");
+              input.type = "file";
+              input.multiple = true;
+              input.accept = ".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.csv";
+              input.onchange = () => handleFileUpload(input.files);
+              input.click();
+            }}
+          >
+            <svg className="w-10 h-10 text-gray-400 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <p className="text-sm font-medium text-gray-700">Drag &amp; drop files here, or click to browse</p>
+            <p className="text-xs text-gray-400 mt-1">PDF, JPG, PNG, DOC, DOCX, XLS, XLSX, CSV</p>
           </div>
 
-          {/* Document Summary */}
+          {/* Document Summary Counts */}
           {client.documents.length > 0 && (
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-5 gap-3">
               {[
                 { label: "Total", count: client.documents.length, color: "text-gray-900", bg: "bg-gray-50", border: "border-gray-200" },
+                { label: "Uploaded", count: client.documents.filter((d) => d.fileData).length, color: "text-brand-600", bg: "bg-brand-50", border: "border-brand-200" },
                 { label: "Pending", count: client.documents.filter((d) => d.status === "pending").length, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-200" },
                 { label: "Approved", count: client.documents.filter((d) => d.status === "approved").length, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200" },
                 { label: "Rejected", count: client.documents.filter((d) => d.status === "rejected").length, color: "text-red-600", bg: "bg-red-50", border: "border-red-200" },
@@ -1068,79 +1091,111 @@ export default function ClientDetailPage() {
           )}
 
           {/* Documents Table */}
-          <div className="card p-6">
-            <h3 className="font-semibold text-lg text-brand-800 mb-4">Client Documents</h3>
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-gray-700">All Documents</h4>
+              <span className="text-xs text-gray-400">{client.documents.length} document{client.documents.length !== 1 ? "s" : ""}</span>
+            </div>
             {client.documents.length > 0 ? (
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="table-header">Document</th>
-                    <th className="table-header">Type</th>
-                    <th className="table-header">Uploaded</th>
-                    <th className="table-header">Status</th>
-                    <th className="table-header">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {client.documents.map((doc) => {
-                    const typeLabels: Record<string, string> = {
-                      bank_statement: "Bank Statement",
-                      tax_return: "Tax Return",
-                      business_license: "Business License",
-                      articles_of_incorporation: "Articles of Inc.",
-                      ein_letter: "EIN Letter",
-                      drivers_license: "Driver's License",
-                      voided_check: "Voided Check",
-                      profit_loss: "P&L Statement",
-                      balance_sheet: "Balance Sheet",
-                      credit_report: "Credit Report",
-                      funding_agreement: "Funding Agreement",
-                      other: "Other",
-                    };
-                    return (
-                      <tr key={doc.id}>
-                        <td className="table-cell font-medium">{doc.name}</td>
-                        <td className="table-cell text-gray-500 text-sm">{typeLabels[doc.type] || doc.type}</td>
-                        <td className="table-cell">{new Date(doc.uploadedAt).toLocaleDateString()}</td>
-                        <td className="table-cell">
-                          <select
-                            className="input-field w-auto text-sm"
-                            value={doc.status}
-                            onChange={(e) => {
-                              const updated = { ...client };
-                              const d = updated.documents.find((dd) => dd.id === doc.id);
-                              if (d) d.status = e.target.value as any;
-                              save(updated);
-                            }}
-                          >
-                            <option value="pending">Pending</option>
-                            <option value="reviewed">Reviewed</option>
-                            <option value="approved">Approved</option>
-                            <option value="rejected">Rejected</option>
-                          </select>
-                        </td>
-                        <td className="table-cell">
-                          <button
-                            onClick={() => {
-                              const updated = { ...client, documents: client.documents.filter((d) => d.id !== doc.id) };
-                              save(updated);
-                            }}
-                            className="text-red-500 hover:text-red-700 text-sm"
-                          >
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div className="divide-y divide-gray-100">
+                {client.documents.map((doc) => (
+                  <div key={doc.id} className="px-5 py-3 flex items-center gap-4 hover:bg-gray-50">
+                    {/* File Icon */}
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                      doc.fileData ? "bg-brand-100" : "bg-gray-100"
+                    }`}>
+                      {doc.fileData ? (
+                        <svg className="w-5 h-5 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      )}
+                    </div>
+
+                    {/* Doc Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{doc.name}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs text-gray-500">{DOC_TYPE_LABELS[doc.type] || doc.type}</span>
+                        {doc.fileData ? (
+                          <>
+                            <span className="text-gray-300">·</span>
+                            <span className="text-xs text-gray-500">{doc.fileName}</span>
+                            <span className="text-gray-300">·</span>
+                            <span className="text-xs text-gray-500">{formatFileSize(doc.fileSize || 0)}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-gray-300">·</span>
+                            <span className="text-xs text-amber-600 font-medium">No file attached</span>
+                          </>
+                        )}
+                        {doc.source === "requested" && !doc.fileData && (
+                          <>
+                            <span className="text-gray-300">·</span>
+                            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">Requested</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Status */}
+                    <select
+                      className="input-field w-auto text-xs py-1"
+                      value={doc.status}
+                      onChange={(e) => {
+                        const updated = { ...client };
+                        const d = updated.documents.find((dd) => dd.id === doc.id);
+                        if (d) d.status = e.target.value as any;
+                        save(updated);
+                      }}
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="reviewed">Reviewed</option>
+                      <option value="approved">Approved</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+
+                    {/* Upload / Replace button */}
+                    <label className="text-xs text-brand-600 hover:text-brand-800 font-medium cursor-pointer shrink-0">
+                      {doc.fileData ? "Replace" : "Upload"}
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.csv"
+                        onChange={(e) => handleFileUpload(e.target.files, doc.id)}
+                      />
+                    </label>
+
+                    {/* Remove */}
+                    <button
+                      onClick={() => {
+                        const updated = { ...client, documents: client.documents.filter((d) => d.id !== doc.id) };
+                        save(updated);
+                      }}
+                      className="text-xs text-red-500 hover:text-red-700 shrink-0"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <p className="text-gray-400 text-center py-8">No documents yet. Use the form above or Quick Add buttons to add document requests.</p>
+              <div className="p-8 text-center">
+                <svg className="w-10 h-10 text-gray-300 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <p className="text-sm text-gray-400">No documents yet</p>
+                <p className="text-xs text-gray-400 mt-1">Upload files above or click &quot;Request All Documents&quot; to get started</p>
+              </div>
             )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* NOTES TAB */}
       {activeTab === "notes" && (
