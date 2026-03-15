@@ -919,6 +919,155 @@ export default function ClientDetailPage() {
       {/* DOCUMENTS TAB */}
       {activeTab === "documents" && (
         <div className="space-y-4">
+          {/* Add Document Form */}
+          <div className="card p-6 bg-brand-50 border-brand-200">
+            <h3 className="font-semibold text-brand-900 mb-3">Add Document to Client</h3>
+            <p className="text-sm text-brand-700 mb-4">
+              Upload or create a document entry that will appear in the client&apos;s portal
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+              <div className="md:col-span-4">
+                <label className="label">Document Name *</label>
+                <input
+                  id="doc-name"
+                  className="input-field"
+                  placeholder="e.g. Bank Statements - March 2026"
+                />
+              </div>
+              <div className="md:col-span-3">
+                <label className="label">Document Type *</label>
+                <select id="doc-type" className="input-field" defaultValue="">
+                  <option value="" disabled>Select type...</option>
+                  <option value="bank_statement">Bank Statement</option>
+                  <option value="tax_return">Tax Return</option>
+                  <option value="business_license">Business License</option>
+                  <option value="articles_of_incorporation">Articles of Incorporation</option>
+                  <option value="ein_letter">EIN Letter</option>
+                  <option value="drivers_license">Driver&apos;s License</option>
+                  <option value="voided_check">Voided Check</option>
+                  <option value="profit_loss">Profit &amp; Loss Statement</option>
+                  <option value="balance_sheet">Balance Sheet</option>
+                  <option value="credit_report">Credit Report</option>
+                  <option value="funding_agreement">Funding Agreement</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="md:col-span-3">
+                <label className="label">Status</label>
+                <select id="doc-status" className="input-field" defaultValue="pending">
+                  <option value="pending">Pending Review</option>
+                  <option value="reviewed">Reviewed</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+              <div className="md:col-span-2 flex items-end">
+                <button
+                  onClick={() => {
+                    const nameEl = document.getElementById("doc-name") as HTMLInputElement;
+                    const typeEl = document.getElementById("doc-type") as HTMLSelectElement;
+                    const statusEl = document.getElementById("doc-status") as HTMLSelectElement;
+                    if (!nameEl.value.trim() || !typeEl.value) {
+                      alert("Please enter a document name and select a type.");
+                      return;
+                    }
+                    const newDoc = {
+                      id: crypto.randomUUID(),
+                      name: nameEl.value.trim(),
+                      type: typeEl.value,
+                      uploadedAt: new Date().toISOString(),
+                      status: statusEl.value as "pending" | "reviewed" | "approved" | "rejected",
+                    };
+                    const updated = { ...client, documents: [...client.documents, newDoc] };
+                    save(updated);
+                    nameEl.value = "";
+                    typeEl.value = "";
+                    statusEl.value = "pending";
+                  }}
+                  className="btn-primary w-full"
+                >
+                  + Add
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Add Common Documents */}
+          <div className="card p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <h4 className="text-sm font-semibold text-gray-700">Quick Add</h4>
+              <span className="text-xs text-gray-400">Click to add common document requests</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { name: "Bank Statements (3 months)", type: "bank_statement" },
+                { name: "Tax Return - Most Recent", type: "tax_return" },
+                { name: "Business License", type: "business_license" },
+                { name: "Articles of Incorporation", type: "articles_of_incorporation" },
+                { name: "EIN Letter (CP 575)", type: "ein_letter" },
+                { name: "Driver's License", type: "drivers_license" },
+                { name: "Voided Check", type: "voided_check" },
+                { name: "P&L Statement", type: "profit_loss" },
+              ].map((item) => (
+                <button
+                  key={item.name}
+                  onClick={() => {
+                    const exists = client.documents.some((d) => d.name === item.name);
+                    if (exists) return;
+                    const newDoc = {
+                      id: crypto.randomUUID(),
+                      name: item.name,
+                      type: item.type,
+                      uploadedAt: new Date().toISOString(),
+                      status: "pending" as const,
+                    };
+                    const updated = { ...client, documents: [...client.documents, newDoc] };
+                    save(updated);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                    client.documents.some((d) => d.name === item.name)
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-700 cursor-default"
+                      : "bg-white border-gray-200 text-gray-600 hover:border-brand-300 hover:text-brand-700"
+                  }`}
+                >
+                  {client.documents.some((d) => d.name === item.name) ? (
+                    <span className="flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      {item.name}
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      {item.name}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Document Summary */}
+          {client.documents.length > 0 && (
+            <div className="grid grid-cols-4 gap-3">
+              {[
+                { label: "Total", count: client.documents.length, color: "text-gray-900", bg: "bg-gray-50", border: "border-gray-200" },
+                { label: "Pending", count: client.documents.filter((d) => d.status === "pending").length, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-200" },
+                { label: "Approved", count: client.documents.filter((d) => d.status === "approved").length, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200" },
+                { label: "Rejected", count: client.documents.filter((d) => d.status === "rejected").length, color: "text-red-600", bg: "bg-red-50", border: "border-red-200" },
+              ].map((s) => (
+                <div key={s.label} className={`rounded-lg border p-3 text-center ${s.count > 0 ? `${s.bg} ${s.border}` : "bg-gray-50 border-gray-100"}`}>
+                  <div className={`text-xl font-bold ${s.count > 0 ? s.color : "text-gray-300"}`}>{s.count}</div>
+                  <div className="text-xs font-medium text-gray-500">{s.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Documents Table */}
           <div className="card p-6">
             <h3 className="font-semibold text-lg text-brand-800 mb-4">Client Documents</h3>
             {client.documents.length > 0 ? (
@@ -926,50 +1075,68 @@ export default function ClientDetailPage() {
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="table-header">Document</th>
+                    <th className="table-header">Type</th>
                     <th className="table-header">Uploaded</th>
                     <th className="table-header">Status</th>
                     <th className="table-header">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {client.documents.map((doc) => (
-                    <tr key={doc.id}>
-                      <td className="table-cell font-medium">{doc.name}</td>
-                      <td className="table-cell">{new Date(doc.uploadedAt).toLocaleDateString()}</td>
-                      <td className="table-cell">
-                        <select
-                          className="input-field w-auto text-sm"
-                          value={doc.status}
-                          onChange={(e) => {
-                            const updated = { ...client };
-                            const d = updated.documents.find((dd) => dd.id === doc.id);
-                            if (d) d.status = e.target.value as any;
-                            save(updated);
-                          }}
-                        >
-                          <option value="pending">Pending</option>
-                          <option value="reviewed">Reviewed</option>
-                          <option value="approved">Approved</option>
-                          <option value="rejected">Rejected</option>
-                        </select>
-                      </td>
-                      <td className="table-cell">
-                        <button
-                          onClick={() => {
-                            const updated = { ...client, documents: client.documents.filter((d) => d.id !== doc.id) };
-                            save(updated);
-                          }}
-                          className="text-red-500 hover:text-red-700 text-sm"
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {client.documents.map((doc) => {
+                    const typeLabels: Record<string, string> = {
+                      bank_statement: "Bank Statement",
+                      tax_return: "Tax Return",
+                      business_license: "Business License",
+                      articles_of_incorporation: "Articles of Inc.",
+                      ein_letter: "EIN Letter",
+                      drivers_license: "Driver's License",
+                      voided_check: "Voided Check",
+                      profit_loss: "P&L Statement",
+                      balance_sheet: "Balance Sheet",
+                      credit_report: "Credit Report",
+                      funding_agreement: "Funding Agreement",
+                      other: "Other",
+                    };
+                    return (
+                      <tr key={doc.id}>
+                        <td className="table-cell font-medium">{doc.name}</td>
+                        <td className="table-cell text-gray-500 text-sm">{typeLabels[doc.type] || doc.type}</td>
+                        <td className="table-cell">{new Date(doc.uploadedAt).toLocaleDateString()}</td>
+                        <td className="table-cell">
+                          <select
+                            className="input-field w-auto text-sm"
+                            value={doc.status}
+                            onChange={(e) => {
+                              const updated = { ...client };
+                              const d = updated.documents.find((dd) => dd.id === doc.id);
+                              if (d) d.status = e.target.value as any;
+                              save(updated);
+                            }}
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="reviewed">Reviewed</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                          </select>
+                        </td>
+                        <td className="table-cell">
+                          <button
+                            onClick={() => {
+                              const updated = { ...client, documents: client.documents.filter((d) => d.id !== doc.id) };
+                              save(updated);
+                            }}
+                            className="text-red-500 hover:text-red-700 text-sm"
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             ) : (
-              <p className="text-gray-400 text-center py-8">No documents uploaded by this client yet.</p>
+              <p className="text-gray-400 text-center py-8">No documents yet. Use the form above or Quick Add buttons to add document requests.</p>
             )}
           </div>
         </div>
