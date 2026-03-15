@@ -42,6 +42,10 @@ export default function ClientDetailPage() {
   const [apiProvider, setApiProviderState] = useState("");
   const [emailSending, setEmailSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<{ file: File; base64: string }[]>([]);
+  const [uploadDocType, setUploadDocType] = useState("bank_statement");
+  const [uploadCustomName, setUploadCustomName] = useState("");
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   useEffect(() => {
     const c = getClient(params.id as string);
@@ -918,20 +922,24 @@ export default function ClientDetailPage() {
 
       {/* DOCUMENTS TAB */}
       {activeTab === "documents" && (() => {
-        const DOC_TYPE_LABELS: Record<string, string> = {
-          bank_statement: "Bank Statement",
-          tax_return: "Tax Return",
-          business_license: "Business License",
-          articles_of_incorporation: "Articles of Inc.",
-          ein_letter: "EIN Letter",
-          drivers_license: "Driver's License",
-          voided_check: "Voided Check",
-          profit_loss: "P&L Statement",
-          balance_sheet: "Balance Sheet",
-          credit_report: "Credit Report",
-          funding_agreement: "Funding Agreement",
-          other: "Other",
-        };
+        const DOC_TYPE_OPTIONS = [
+          { value: "bank_statement", label: "Bank Statement" },
+          { value: "tax_return", label: "Tax Return" },
+          { value: "business_license", label: "Business License" },
+          { value: "articles_of_incorporation", label: "Articles of Incorporation" },
+          { value: "ein_letter", label: "EIN Letter" },
+          { value: "drivers_license", label: "Driver's License" },
+          { value: "voided_check", label: "Voided Check" },
+          { value: "profit_loss", label: "P&L Statement" },
+          { value: "balance_sheet", label: "Balance Sheet" },
+          { value: "credit_report", label: "Credit Report" },
+          { value: "funding_agreement", label: "Funding Agreement" },
+          { value: "other", label: "Other (Type Name)" },
+        ];
+
+        const DOC_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+          DOC_TYPE_OPTIONS.map((o) => [o.value, o.label])
+        );
 
         const REQUIRED_DOCS = [
           { name: "Bank Statements (3 months)", type: "bank_statement" },
@@ -954,47 +962,69 @@ export default function ClientDetailPage() {
 
         function handleFileUpload(files: FileList | null, docId?: string) {
           if (!files || files.length === 0 || !client) return;
-          Array.from(files).forEach((file) => {
+          if (docId) {
+            // Attach file to existing document (no naming needed)
+            const file = files[0];
             const reader = new FileReader();
             reader.onload = () => {
               const base64 = reader.result as string;
-              if (docId) {
-                // Attach file to existing document
-                const updated = { ...client };
-                const doc = updated.documents.find((d) => d.id === docId);
-                if (doc) {
-                  doc.fileName = file.name;
-                  doc.fileData = base64;
-                  doc.fileSize = file.size;
-                  doc.uploadedAt = new Date().toISOString();
-                  doc.source = "admin";
-                }
-                save(updated);
-              } else {
-                // Create new document from uploaded file
-                const ext = file.name.split(".").pop()?.toLowerCase() || "";
-                let docType = "other";
-                if (ext === "pdf" || file.name.toLowerCase().includes("statement")) docType = "bank_statement";
-                if (file.name.toLowerCase().includes("tax") || file.name.toLowerCase().includes("1040")) docType = "tax_return";
-                if (file.name.toLowerCase().includes("license")) docType = "business_license";
-
-                const newDoc = {
-                  id: crypto.randomUUID(),
-                  name: file.name.replace(/\.[^/.]+$/, ""),
-                  type: docType,
-                  uploadedAt: new Date().toISOString(),
-                  status: "pending" as const,
-                  fileName: file.name,
-                  fileData: base64,
-                  fileSize: file.size,
-                  source: "admin" as const,
-                };
-                const updated = { ...client, documents: [...client.documents, newDoc] };
-                save(updated);
+              const updated = { ...client };
+              const doc = updated.documents.find((d) => d.id === docId);
+              if (doc) {
+                doc.fileName = file.name;
+                doc.fileData = base64;
+                doc.fileSize = file.size;
+                doc.uploadedAt = new Date().toISOString();
+                doc.source = "admin";
               }
+              save(updated);
             };
             reader.readAsDataURL(file);
-          });
+          } else {
+            // New upload — read files then show naming modal
+            const pending: { file: File; base64: string }[] = [];
+            let loaded = 0;
+            const fileArr = Array.from(files);
+            fileArr.forEach((file) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                pending.push({ file, base64: reader.result as string });
+                loaded++;
+                if (loaded === fileArr.length) {
+                  setPendingFiles(pending);
+                  setUploadDocType("bank_statement");
+                  setUploadCustomName("");
+                  setShowUploadModal(true);
+                }
+              };
+              reader.readAsDataURL(file);
+            });
+          }
+        }
+
+        function confirmUpload() {
+          if (!client) return;
+          const docType = uploadDocType;
+          const docLabel = docType === "other" && uploadCustomName.trim()
+            ? uploadCustomName.trim()
+            : DOC_TYPE_LABELS[docType] || docType;
+
+          const newDocs = pendingFiles.map((pf) => ({
+            id: crypto.randomUUID(),
+            name: docLabel,
+            type: docType === "other" && uploadCustomName.trim() ? "other" : docType,
+            uploadedAt: new Date().toISOString(),
+            status: "pending" as const,
+            fileName: pf.file.name,
+            fileData: pf.base64,
+            fileSize: pf.file.size,
+            source: "admin" as const,
+          }));
+
+          const updated = { ...client, documents: [...client.documents, ...newDocs] };
+          save(updated);
+          setShowUploadModal(false);
+          setPendingFiles([]);
         }
 
         function requestAllDocuments() {
@@ -1071,6 +1101,62 @@ export default function ClientDetailPage() {
             <p className="text-sm font-medium text-gray-700">Drag &amp; drop files here, or click to browse</p>
             <p className="text-xs text-gray-400 mt-1">PDF, JPG, PNG, DOC, DOCX, XLS, XLSX, CSV</p>
           </div>
+
+          {/* Upload Naming Modal */}
+          {showUploadModal && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
+                <h3 className="text-lg font-bold text-gray-900 mb-1">Name Your Document</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  {pendingFiles.length} file{pendingFiles.length !== 1 ? "s" : ""} selected: {pendingFiles.map((pf) => pf.file.name).join(", ")}
+                </p>
+
+                <label className="label">Document Type</label>
+                <select
+                  className="input-field w-full mb-3"
+                  value={uploadDocType}
+                  onChange={(e) => {
+                    setUploadDocType(e.target.value);
+                    if (e.target.value !== "other") setUploadCustomName("");
+                  }}
+                >
+                  {DOC_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+
+                {uploadDocType === "other" && (
+                  <>
+                    <label className="label">Custom Document Name</label>
+                    <input
+                      type="text"
+                      className="input-field w-full mb-3"
+                      placeholder="Enter document name..."
+                      value={uploadCustomName}
+                      onChange={(e) => setUploadCustomName(e.target.value)}
+                      autoFocus
+                    />
+                  </>
+                )}
+
+                <div className="flex items-center justify-end gap-3 mt-4">
+                  <button
+                    className="btn-secondary text-sm"
+                    onClick={() => { setShowUploadModal(false); setPendingFiles([]); }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn-primary text-sm"
+                    disabled={uploadDocType === "other" && !uploadCustomName.trim()}
+                    onClick={confirmUpload}
+                  >
+                    Upload {pendingFiles.length > 1 ? `${pendingFiles.length} Files` : "File"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Document Summary Counts */}
           {client.documents.length > 0 && (
