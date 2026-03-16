@@ -194,9 +194,12 @@ export default function AdminClientsPage() {
             >
               <option value="all">All Clients</option>
               <option value="none">No Referral Partner</option>
-              {referralPartners.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
+              {referralPartners.map((p) => {
+                const count = clients.filter((c) => c.referralPartner === p).length;
+                return (
+                  <option key={p} value={p}>{p} ({count})</option>
+                );
+              })}
             </select>
           </div>
 
@@ -230,28 +233,6 @@ export default function AdminClientsPage() {
             Manage Partners
           </button>
 
-          {/* Referral partner summary chips */}
-          {referralPartners.length > 0 && (
-            <div className="flex items-center gap-1.5 ml-auto">
-              {referralPartners.map((p) => {
-                const count = clients.filter((c) => c.referralPartner === p).length;
-                return (
-                  <button
-                    key={p}
-                    onClick={() => setReferralFilter(referralFilter === p ? "all" : p)}
-                    className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                      referralFilter === p
-                        ? "bg-purple-100 border-purple-300 text-purple-800"
-                        : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    {p}
-                    <span className={`font-bold ${referralFilter === p ? "text-purple-900" : "text-gray-800"}`}>{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
         </div>
       </div>
 
