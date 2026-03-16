@@ -157,14 +157,34 @@ export default function ClientDetailPage() {
     save(updated);
   }
 
-  function sendOnboardingEmail() {
+  async function sendOnboardingEmail() {
     if (!client || !client.personalInfo.email) {
       alert("Client must have an email address to send the onboarding link.");
       return;
     }
     setEmailSending(true);
-    // Simulate email sending
-    setTimeout(() => {
+    const link = `${window.location.origin}/onboard/${client.id}`;
+
+    try {
+      const res = await fetch("/api/send-onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientName: `${client.personalInfo.firstName} ${client.personalInfo.lastName}`.trim() || "Client",
+          clientEmail: client.personalInfo.email,
+          onboardingLink: link,
+          businessName: client.businessInfo.businessName || "",
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(`Failed to send email: ${data.error || "Unknown error"}. Make sure RESEND_API_KEY is set in your .env.local file.`);
+        setEmailSending(false);
+        return;
+      }
+
       const updated = {
         ...client,
         onboardingStatus: (client.onboardingStatus === "not_started" ? "agreement_sent" : client.onboardingStatus) as Client["onboardingStatus"],
@@ -174,7 +194,11 @@ export default function ClientDetailPage() {
       setEmailSending(false);
       setEmailSent(true);
       setTimeout(() => setEmailSent(false), 4000);
-    }, 1500);
+    } catch (err) {
+      console.error("Email send error:", err);
+      alert("Failed to send email. Check your network connection and RESEND_API_KEY.");
+      setEmailSending(false);
+    }
   }
 
   if (!client) return null;
