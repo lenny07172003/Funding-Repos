@@ -76,7 +76,7 @@ export default function AdminClientsPage() {
                 <th className="table-header">Business</th>
                 <th className="table-header">Status</th>
                 <th className="table-header">Total Funded</th>
-                <th className="table-header">Total Approved</th>
+                <th className="table-header">Pending Apps</th>
                 <th className="table-header">Actions</th>
               </tr>
             </thead>
@@ -100,8 +100,8 @@ export default function AdminClientsPage() {
                   <td className="table-cell font-semibold text-emerald-600">
                     ${client.totalFunded.toLocaleString()}
                   </td>
-                  <td className="table-cell font-semibold text-brand-600">
-                    ${client.totalApproved.toLocaleString()}
+                  <td className="table-cell font-semibold text-amber-600">
+                    {client.fundingApplications.filter((a) => a.status === "pending").length}
                   </td>
                   <td className="table-cell">
                     <div className="flex items-center gap-2">
