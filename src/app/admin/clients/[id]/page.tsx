@@ -563,6 +563,21 @@ export default function ClientDetailPage() {
       {/* BUSINESS INFO TAB */}
       {activeTab === "business" && (
         <div className="space-y-6">
+          {/* Referral Partner */}
+          <div className="card p-6 bg-purple-50 border-purple-200">
+            <h3 className="font-semibold text-lg text-purple-800 mb-3">Referral Partner</h3>
+            <p className="text-sm text-purple-600 mb-3">Assign a referral partner who referred this client for funding.</p>
+            <input
+              className="input-field"
+              placeholder="Enter referral partner name..."
+              value={client.referralPartner || ""}
+              onChange={(e) => {
+                const updated = { ...client, referralPartner: e.target.value };
+                save(updated);
+              }}
+            />
+          </div>
+
           <div className="card p-6">
             <h3 className="font-semibold text-lg text-brand-800 mb-4">Personal Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -96,6 +96,7 @@ export interface Client {
     businessForm: boolean;
     creditMonitoring: boolean;
   };
+  referralPartner: string;
 }
 
 export interface Lender {

@@ -65,6 +65,7 @@ export function createEmptyClient(id?: string): Client {
       businessForm: false,
       creditMonitoring: false,
     },
+    referralPartner: "",
   };
 }
 
