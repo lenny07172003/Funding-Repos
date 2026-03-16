@@ -3,16 +3,20 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Client } from "@/lib/types";
-import { getClients, deleteClient } from "@/lib/store";
+import { getClients, deleteClient, getReferralPartners, saveReferralPartners } from "@/lib/store";
 
 export default function AdminClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [search, setSearch] = useState("");
   const [referralFilter, setReferralFilter] = useState("all");
   const [groupByReferral, setGroupByReferral] = useState(false);
+  const [showPartnerManager, setShowPartnerManager] = useState(false);
+  const [savedPartners, setSavedPartners] = useState<string[]>([]);
+  const [newPartnerName, setNewPartnerName] = useState("");
 
   useEffect(() => {
     setClients(getClients());
+    setSavedPartners(getReferralPartners());
   }, []);
 
   function handleDelete(id: string) {
@@ -22,10 +26,27 @@ export default function AdminClientsPage() {
     }
   }
 
-  // Get unique referral partners
+  // Get unique referral partners (merge saved list + any assigned on clients)
+  const clientPartners = clients.map((c) => c.referralPartner || "").filter(Boolean);
   const referralPartners = Array.from(
-    new Set(clients.map((c) => c.referralPartner || "").filter(Boolean))
+    new Set([...savedPartners, ...clientPartners])
   ).sort();
+
+  function addPartner() {
+    const name = newPartnerName.trim();
+    if (!name || savedPartners.includes(name)) return;
+    const updated = [...savedPartners, name].sort();
+    setSavedPartners(updated);
+    saveReferralPartners(updated);
+    setNewPartnerName("");
+  }
+
+  function removePartner(name: string) {
+    const updated = savedPartners.filter((p) => p !== name);
+    setSavedPartners(updated);
+    saveReferralPartners(updated);
+    if (referralFilter === name) setReferralFilter("all");
+  }
 
   const filtered = clients.filter((c) => {
     const q = search.toLowerCase();
@@ -194,6 +215,21 @@ export default function AdminClientsPage() {
             Group by Referral Partner
           </button>
 
+          {/* Manage Partners Toggle */}
+          <button
+            onClick={() => setShowPartnerManager(!showPartnerManager)}
+            className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg border transition-colors ${
+              showPartnerManager
+                ? "bg-purple-100 border-purple-300 text-purple-800"
+                : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            Manage Partners
+          </button>
+
           {/* Referral partner summary chips */}
           {referralPartners.length > 0 && (
             <div className="flex items-center gap-1.5 ml-auto">
@@ -218,6 +254,78 @@ export default function AdminClientsPage() {
           )}
         </div>
       </div>
+
+      {/* Referral Partners Manager */}
+      {showPartnerManager && (
+        <div className="card p-5 border-purple-200 bg-purple-50/50">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 bg-purple-100 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Referral Partners</h3>
+              <p className="text-sm text-gray-500">Add partner names here so they appear as options when assigning clients.</p>
+            </div>
+          </div>
+
+          {/* Add new partner */}
+          <div className="flex items-center gap-2 mb-4">
+            <input
+              className="input-field flex-1"
+              placeholder="Enter referral partner name..."
+              value={newPartnerName}
+              onChange={(e) => setNewPartnerName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") addPartner(); }}
+            />
+            <button
+              onClick={addPartner}
+              disabled={!newPartnerName.trim() || savedPartners.includes(newPartnerName.trim())}
+              className="btn-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Add Partner
+            </button>
+          </div>
+
+          {/* Partner list */}
+          {referralPartners.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {referralPartners.map((p) => {
+                const count = clients.filter((c) => c.referralPartner === p).length;
+                const isSaved = savedPartners.includes(p);
+                return (
+                  <div
+                    key={p}
+                    className="inline-flex items-center gap-2 bg-white border border-purple-200 rounded-lg px-3 py-2 text-sm"
+                  >
+                    <div className="w-7 h-7 bg-purple-100 rounded-full flex items-center justify-center text-xs font-bold text-purple-700">
+                      {p.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-900">{p}</span>
+                      <span className="text-xs text-gray-400 ml-1.5">{count} client{count !== 1 ? "s" : ""}</span>
+                    </div>
+                    {isSaved && (
+                      <button
+                        onClick={() => removePartner(p)}
+                        className="text-gray-400 hover:text-red-500 ml-1"
+                        title="Remove partner"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">No referral partners added yet. Add one above to get started.</p>
+          )}
+        </div>
+      )}
 
       {/* Client List */}
       {filtered.length > 0 ? (

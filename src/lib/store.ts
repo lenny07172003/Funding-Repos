@@ -197,3 +197,22 @@ export function upsertLender(lender: Lender) {
 export function deleteLender(id: string) {
   saveLenders(getLenders().filter((l) => l.id !== id));
 }
+
+// Referral Partners storage
+const REFERRAL_PARTNERS_STORAGE = "funding_crm_referral_partners";
+
+export function getReferralPartners(): string[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(REFERRAL_PARTNERS_STORAGE);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export function saveReferralPartners(partners: string[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(REFERRAL_PARTNERS_STORAGE, JSON.stringify(partners));
+}

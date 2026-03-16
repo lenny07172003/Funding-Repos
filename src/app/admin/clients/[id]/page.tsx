@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Client, FundingApplication, CreditBureauData } from "@/lib/types";
-import { getClient, upsertClient, getApiKey, setApiKey, getApiProvider, setApiProvider } from "@/lib/store";
+import { getClient, upsertClient, getApiKey, setApiKey, getApiProvider, setApiProvider, getReferralPartners } from "@/lib/store";
 
 type Tab = "credit" | "business" | "applications" | "documents" | "notes";
 
@@ -46,6 +46,7 @@ export default function ClientDetailPage() {
   const [uploadDocType, setUploadDocType] = useState("bank_statement");
   const [uploadCustomName, setUploadCustomName] = useState("");
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [savedPartners, setSavedPartners] = useState<string[]>([]);
 
   useEffect(() => {
     const c = getClient(params.id as string);
@@ -56,6 +57,7 @@ export default function ClientDetailPage() {
     setClient(c);
     setApiKeyState(getApiKey());
     setApiProviderState(getApiProvider());
+    setSavedPartners(getReferralPartners());
   }, [params.id, router]);
 
   function save(updated: Client) {
@@ -567,15 +569,24 @@ export default function ClientDetailPage() {
           <div className="card p-6 bg-purple-50 border-purple-200">
             <h3 className="font-semibold text-lg text-purple-800 mb-3">Referral Partner</h3>
             <p className="text-sm text-purple-600 mb-3">Assign a referral partner who referred this client for funding.</p>
-            <input
+            <select
               className="input-field"
-              placeholder="Enter referral partner name..."
               value={client.referralPartner || ""}
               onChange={(e) => {
                 const updated = { ...client, referralPartner: e.target.value };
                 save(updated);
               }}
-            />
+            >
+              <option value="">No Referral Partner</option>
+              {savedPartners.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+            {savedPartners.length === 0 && (
+              <p className="text-xs text-purple-500 mt-2">
+                No referral partners added yet. Go to <Link href="/admin/clients" className="underline font-medium">All Clients</Link> and click &quot;Manage Partners&quot; to add them.
+              </p>
+            )}
           </div>
 
           <div className="card p-6">
