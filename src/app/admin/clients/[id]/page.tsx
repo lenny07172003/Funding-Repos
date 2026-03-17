@@ -513,46 +513,6 @@ export default function ClientDetailPage() {
       {/* CREDIT PROFILE TAB */}
       {activeTab === "credit" && (
         <div className="space-y-6">
-          {/* API Configuration */}
-          <div className="card p-6 bg-brand-50 border-brand-200">
-            <h3 className="font-semibold text-brand-900 mb-3">Credit Data API Configuration</h3>
-            <p className="text-sm text-brand-700 mb-4">
-              Connect a credit data provider API to automatically pull credit reports. Until configured, use the manual entry fields below.
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="label">API Provider</label>
-                <select
-                  className="input-field"
-                  value={apiProvider}
-                  onChange={(e) => setApiProviderState(e.target.value)}
-                >
-                  <option value="">Select Provider...</option>
-                  <option value="array">Array (formerly Creditworks)</option>
-                  <option value="smartcredit">SmartCredit</option>
-                  <option value="creditapi">CreditAPI</option>
-                  <option value="softpull">SoftPull</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <div>
-                <label className="label">API Key</label>
-                <input
-                  className="input-field"
-                  type="password"
-                  placeholder="Enter API key..."
-                  value={apiKey}
-                  onChange={(e) => setApiKeyState(e.target.value)}
-                />
-              </div>
-              <div className="flex items-end">
-                <button onClick={saveApiSettings} className="btn-primary w-full">
-                  Save API Settings
-                </button>
-              </div>
-            </div>
-          </div>
-
           {/* Manual Credit Entry per Bureau */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {bureauNames.map((bureau) => {
@@ -629,6 +589,46 @@ export default function ClientDetailPage() {
                 </div>
               );
             })}
+          </div>
+
+          {/* API Configuration */}
+          <div className="card p-6 bg-brand-50 border-brand-200">
+            <h3 className="font-semibold text-brand-900 mb-3">Credit Data API Configuration</h3>
+            <p className="text-sm text-brand-700 mb-4">
+              Connect a credit data provider API to automatically pull credit reports. Until configured, use the manual entry fields above.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="label">API Provider</label>
+                <select
+                  className="input-field"
+                  value={apiProvider}
+                  onChange={(e) => setApiProviderState(e.target.value)}
+                >
+                  <option value="">Select Provider...</option>
+                  <option value="array">Array (formerly Creditworks)</option>
+                  <option value="smartcredit">SmartCredit</option>
+                  <option value="creditapi">CreditAPI</option>
+                  <option value="softpull">SoftPull</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">API Key</label>
+                <input
+                  className="input-field"
+                  type="password"
+                  placeholder="Enter API key..."
+                  value={apiKey}
+                  onChange={(e) => setApiKeyState(e.target.value)}
+                />
+              </div>
+              <div className="flex items-end">
+                <button onClick={saveApiSettings} className="btn-primary w-full">
+                  Save API Settings
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
