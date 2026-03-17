@@ -54,6 +54,7 @@ export function createEmptyClient(id?: string): Client {
     totalFunded: 0,
     totalApproved: 0,
     notes: "",
+    activityLog: [],
     agreementSignature: null,
     creditMonitoringStatus: "not_started",
     creditMonitoringProvider: "",

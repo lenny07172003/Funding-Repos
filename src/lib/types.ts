@@ -73,6 +73,14 @@ export interface AgreementSignature {
   ipAddress: string;
 }
 
+export interface ActivityEntry {
+  id: string;
+  timestamp: string; // ISO string
+  type: "note" | "email" | "application" | "status_change" | "document" | "onboarding" | "credit";
+  message: string;
+  details?: string; // optional extra context
+}
+
 export interface Client {
   id: string;
   personalInfo: PersonalInfo;
@@ -85,6 +93,7 @@ export interface Client {
   totalFunded: number;
   totalApproved: number;
   notes: string;
+  activityLog: ActivityEntry[];
   agreementSignature: AgreementSignature | null;
   creditMonitoringStatus: "not_started" | "pending" | "active" | "inactive";
   creditMonitoringProvider: string;

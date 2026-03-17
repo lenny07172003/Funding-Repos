@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Client, FundingApplication, CreditBureauData } from "@/lib/types";
+import { Client, FundingApplication, CreditBureauData, ActivityEntry } from "@/lib/types";
 import { getClient, upsertClient, getApiKey, setApiKey, getApiProvider, setApiProvider, getReferralPartners, getLenders, ensureLenderByName } from "@/lib/store";
 
 type Tab = "credit" | "business" | "applications" | "documents" | "notes";
@@ -48,6 +48,7 @@ export default function ClientDetailPage() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [savedPartners, setSavedPartners] = useState<string[]>([]);
   const [lenderNames, setLenderNames] = useState<string[]>([]);
+  const [newNote, setNewNote] = useState("");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const dragNodeRef = useRef<HTMLDivElement | null>(null);
@@ -74,10 +75,24 @@ export default function ClientDetailPage() {
       .filter((a) => a.status === "funded")
       .reduce((sum, a) => sum + (a.amount || 0), 0);
 
+    // Ensure activityLog exists for older clients
+    if (!updated.activityLog) updated.activityLog = [];
+
     upsertClient(updated);
     setClient({ ...updated });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  }
+
+  function addActivity(updated: Client, type: ActivityEntry["type"], message: string, details?: string) {
+    if (!updated.activityLog) updated.activityLog = [];
+    updated.activityLog.unshift({
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      type,
+      message,
+      details,
+    });
   }
 
   function updateBureau(bureau: typeof bureauNames[number], field: keyof CreditBureauData, value: string) {
@@ -121,6 +136,7 @@ export default function ClientDetailPage() {
       notes: "",
     };
     const updated = { ...client, fundingApplications: [...client.fundingApplications, newApp] };
+    addActivity(updated, "application", "Added a new funding application");
     save(updated);
   }
 
@@ -129,6 +145,7 @@ export default function ClientDetailPage() {
     const updated = { ...client };
     const app = updated.fundingApplications.find((a) => a.id === id);
     if (!app) return;
+    const oldValue = (app as any)[field];
     if (field === "amount") {
       app.amount = value === "" ? null : Number(value);
     } else {
@@ -139,15 +156,24 @@ export default function ClientDetailPage() {
       ensureLenderByName(value);
       setLenderNames(getLenders().map((l) => l.name).filter(Boolean).sort());
     }
+    // Log status changes
+    if (field === "status" && value !== oldValue) {
+      const lenderLabel = app.lender || "Unknown lender";
+      addActivity(updated, "status_change", `Application status changed to "${value}"`, `${lenderLabel} — ${app.product || "No product"}`);
+    }
     save(updated);
   }
 
   function removeApplication(id: string) {
     if (!client) return;
+    const removed = client.fundingApplications.find((a) => a.id === id);
     const updated = {
       ...client,
       fundingApplications: client.fundingApplications.filter((a) => a.id !== id),
     };
+    if (removed) {
+      addActivity(updated, "application", `Removed application`, `${removed.lender || "Unknown lender"} — ${removed.product || "No product"}`);
+    }
     save(updated);
   }
 
@@ -172,6 +198,8 @@ export default function ClientDetailPage() {
     if (status === "active" && !updated.onboardedAt) {
       updated.onboardedAt = new Date().toISOString();
     }
+    const labels: Record<string, string> = { not_started: "Not Started", agreement_sent: "Agreement Sent", agreement_signed: "Agreement Signed", active: "Active" };
+    addActivity(updated, "onboarding", `Onboarding status changed to "${labels[status] || status}"`);
     save(updated);
   }
 
@@ -208,6 +236,7 @@ export default function ClientDetailPage() {
         onboardingStatus: (client.onboardingStatus === "not_started" ? "agreement_sent" : client.onboardingStatus) as Client["onboardingStatus"],
         onboardingEmailSentAt: new Date().toISOString(),
       };
+      addActivity(updated, "email", "Sent onboarding email", client.personalInfo.email);
       save(updated);
       setEmailSending(false);
       setEmailSent(true);
@@ -230,7 +259,7 @@ export default function ClientDetailPage() {
     { key: "business", label: "Business Info" },
     { key: "applications", label: "Application Stacking" },
     { key: "documents", label: "Documents" },
-    { key: "notes", label: "Notes" },
+    { key: "notes", label: "Activity" },
   ];
 
   const statusBadge: Record<string, string> = {
@@ -1137,6 +1166,7 @@ export default function ClientDetailPage() {
           }));
 
           const updated = { ...client, documents: [...client.documents, ...newDocs] };
+          addActivity(updated, "document", `Uploaded ${newDocs.length} document${newDocs.length > 1 ? "s" : ""}`, docLabel);
           save(updated);
           setShowUploadModal(false);
           setPendingFiles([]);
@@ -1161,6 +1191,7 @@ export default function ClientDetailPage() {
             return;
           }
           const updated = { ...client, documents: [...client.documents, ...newDocs] };
+          addActivity(updated, "document", `Requested ${newDocs.length} standard documents`);
           save(updated);
         }
 
@@ -1398,21 +1429,201 @@ export default function ClientDetailPage() {
         );
       })()}
 
-      {/* NOTES TAB */}
-      {activeTab === "notes" && (
-        <div className="card p-6">
-          <h3 className="font-semibold text-lg text-brand-800 mb-4">Internal Notes</h3>
-          <textarea
-            className="input-field min-h-[200px]"
-            placeholder="Add internal notes about this client..."
-            value={client.notes}
-            onChange={(e) => {
-              const updated = { ...client, notes: e.target.value };
-              save(updated);
-            }}
-          />
-        </div>
-      )}
+      {/* NOTES & ACTIVITY TAB */}
+      {activeTab === "notes" && (() => {
+        function submitNote() {
+          if (!client || !newNote.trim()) return;
+          const updated = { ...client };
+          addActivity(updated, "note", newNote.trim());
+          save(updated);
+          setNewNote("");
+        }
+
+        const activityLog = client.activityLog || [];
+
+        const iconMap: Record<ActivityEntry["type"], { bg: string; icon: JSX.Element }> = {
+          note: {
+            bg: "bg-blue-100 text-blue-600",
+            icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />,
+          },
+          email: {
+            bg: "bg-purple-100 text-purple-600",
+            icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />,
+          },
+          application: {
+            bg: "bg-emerald-100 text-emerald-600",
+            icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />,
+          },
+          status_change: {
+            bg: "bg-amber-100 text-amber-600",
+            icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />,
+          },
+          document: {
+            bg: "bg-indigo-100 text-indigo-600",
+            icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />,
+          },
+          onboarding: {
+            bg: "bg-teal-100 text-teal-600",
+            icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />,
+          },
+          credit: {
+            bg: "bg-rose-100 text-rose-600",
+            icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />,
+          },
+        };
+
+        const typeLabels: Record<ActivityEntry["type"], string> = {
+          note: "Note",
+          email: "Email",
+          application: "Application",
+          status_change: "Status Change",
+          document: "Document",
+          onboarding: "Onboarding",
+          credit: "Credit",
+        };
+
+        function formatTimestamp(iso: string) {
+          const d = new Date(iso);
+          const now = new Date();
+          const diffMs = now.getTime() - d.getTime();
+          const diffMins = Math.floor(diffMs / 60000);
+          const diffHours = Math.floor(diffMs / 3600000);
+          const diffDays = Math.floor(diffMs / 86400000);
+
+          let relative = "";
+          if (diffMins < 1) relative = "Just now";
+          else if (diffMins < 60) relative = `${diffMins}m ago`;
+          else if (diffHours < 24) relative = `${diffHours}h ago`;
+          else if (diffDays < 7) relative = `${diffDays}d ago`;
+          else relative = d.toLocaleDateString();
+
+          return { relative, full: d.toLocaleString() };
+        }
+
+        // Group activity entries by date
+        const grouped = new Map<string, ActivityEntry[]>();
+        activityLog.forEach((entry) => {
+          const dateKey = new Date(entry.timestamp).toLocaleDateString("en-US", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          });
+          if (!grouped.has(dateKey)) grouped.set(dateKey, []);
+          grouped.get(dateKey)!.push(entry);
+        });
+
+        return (
+          <div className="space-y-4">
+            {/* Add Note Input */}
+            <div className="card p-5">
+              <h3 className="font-semibold text-lg text-gray-900 mb-3">Add a Note</h3>
+              <div className="flex gap-3">
+                <textarea
+                  className="input-field flex-1 min-h-[80px] resize-none"
+                  placeholder="Type a note about this client..."
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitNote();
+                  }}
+                />
+                <div className="flex flex-col justify-end">
+                  <button
+                    onClick={submitNote}
+                    disabled={!newNote.trim()}
+                    className="btn-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Add Note
+                  </button>
+                  <span className="text-xs text-gray-400 mt-1.5 text-center">Ctrl+Enter</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Legacy notes migration */}
+            {client.notes && client.notes.trim() && (
+              <div className="card p-4 bg-amber-50 border-amber-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-amber-800">Legacy Notes</span>
+                  <button
+                    onClick={() => {
+                      const updated = { ...client };
+                      addActivity(updated, "note", client.notes, "Migrated from legacy notes");
+                      updated.notes = "";
+                      save(updated);
+                    }}
+                    className="text-xs text-amber-700 hover:text-amber-900 underline"
+                  >
+                    Move to timeline
+                  </button>
+                </div>
+                <p className="text-sm text-amber-700 whitespace-pre-wrap">{client.notes}</p>
+              </div>
+            )}
+
+            {/* Activity Timeline */}
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-lg text-gray-900">Activity Timeline</h3>
+                <span className="text-sm text-gray-400">{activityLog.length} event{activityLog.length !== 1 ? "s" : ""}</span>
+              </div>
+
+              {activityLog.length > 0 ? (
+                <div className="space-y-6">
+                  {Array.from(grouped.entries()).map(([dateKey, entries]) => (
+                    <div key={dateKey}>
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="h-px flex-1 bg-gray-200" />
+                        <span className="text-xs font-medium text-gray-400 uppercase tracking-wider whitespace-nowrap">{dateKey}</span>
+                        <div className="h-px flex-1 bg-gray-200" />
+                      </div>
+                      <div className="space-y-3">
+                        {entries.map((entry) => {
+                          const { bg, icon } = iconMap[entry.type] || iconMap.note;
+                          const time = formatTimestamp(entry.timestamp);
+                          return (
+                            <div key={entry.id} className="flex gap-3 group">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${bg}`}>
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  {icon}
+                                </svg>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <p className="text-sm text-gray-900">{entry.message}</p>
+                                    {entry.details && (
+                                      <p className="text-xs text-gray-500 mt-0.5">{entry.details}</p>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${bg}`}>
+                                      {typeLabels[entry.type]}
+                                    </span>
+                                    <span className="text-xs text-gray-400" title={time.full}>{time.relative}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-sm text-gray-400">No activity yet. Actions like sending emails, adding applications, and uploading documents will appear here automatically.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
