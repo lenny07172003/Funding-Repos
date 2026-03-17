@@ -62,7 +62,7 @@ export default function DocumentsPage() {
 
       {/* Upload Area */}
       <div
-        className={`card border-2 border-dashed p-12 text-center transition-colors ${
+        className={`card border-2 border-dashed p-6 sm:p-12 text-center transition-colors ${
           dragActive ? "border-brand-500 bg-brand-50" : "border-gray-300"
         }`}
         onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
@@ -82,45 +82,73 @@ export default function DocumentsPage() {
 
       {/* Document List */}
       {documents.length > 0 && (
-        <div className="card overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="table-header">Document</th>
-                <th className="table-header">Uploaded</th>
-                <th className="table-header">Status</th>
-                <th className="table-header">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {documents.map((doc) => (
-                <tr key={doc.id} className="hover:bg-gray-50">
-                  <td className="table-cell font-medium text-gray-900">
-                    <div className="flex items-center gap-2">
-                      <svg className="w-5 h-5 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      {doc.name}
-                    </div>
-                  </td>
-                  <td className="table-cell">
-                    {new Date(doc.uploadedAt).toLocaleDateString()}
-                  </td>
-                  <td className="table-cell">
-                    <span className={statusColors[doc.status]}>
-                      {doc.status.charAt(0).toUpperCase() + doc.status.slice(1)}
-                    </span>
-                  </td>
-                  <td className="table-cell">
-                    <button onClick={() => handleDelete(doc.id)} className="text-red-500 hover:text-red-700 text-sm">
-                      Remove
-                    </button>
-                  </td>
+        <>
+          {/* Mobile card view */}
+          <div className="mobile-card-list">
+            {documents.map((doc) => (
+              <div key={doc.id} className="mobile-card-item">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <svg className="w-5 h-5 text-brand-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span className="font-medium text-gray-900 text-sm truncate">{doc.name}</span>
+                  </div>
+                  <span className={statusColors[doc.status]}>
+                    {doc.status.charAt(0).toUpperCase() + doc.status.slice(1)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                  <span className="text-xs text-gray-500">{new Date(doc.uploadedAt).toLocaleDateString()}</span>
+                  <button onClick={() => handleDelete(doc.id)} className="text-red-500 hover:text-red-700 text-sm">
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="card overflow-hidden table-responsive">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="table-header">Document</th>
+                  <th className="table-header">Uploaded</th>
+                  <th className="table-header">Status</th>
+                  <th className="table-header">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {documents.map((doc) => (
+                  <tr key={doc.id} className="hover:bg-gray-50">
+                    <td className="table-cell font-medium text-gray-900">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-5 h-5 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        {doc.name}
+                      </div>
+                    </td>
+                    <td className="table-cell">
+                      {new Date(doc.uploadedAt).toLocaleDateString()}
+                    </td>
+                    <td className="table-cell">
+                      <span className={statusColors[doc.status]}>
+                        {doc.status.charAt(0).toUpperCase() + doc.status.slice(1)}
+                      </span>
+                    </td>
+                    <td className="table-cell">
+                      <button onClick={() => handleDelete(doc.id)} className="text-red-500 hover:text-red-700 text-sm">
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {documents.length === 0 && (

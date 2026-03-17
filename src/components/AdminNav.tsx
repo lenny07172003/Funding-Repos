@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -13,6 +14,7 @@ const navItems = [
 export default function AdminNav() {
   const pathname = usePathname();
   const isClientDetail = pathname.startsWith("/admin/clients/");
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <nav className="bg-brand-900 border-b border-brand-800 shadow-sm">
@@ -26,7 +28,9 @@ export default function AdminNav() {
             </div>
             <span className="text-lg font-bold text-white">Admin Dashboard</span>
           </Link>
-          <div className="flex items-center gap-1">
+
+          {/* Desktop nav */}
+          <div className="hidden md:flex items-center gap-1">
             {navItems.map((item) => {
               const active = item.exact
                 ? pathname === item.href
@@ -46,8 +50,50 @@ export default function AdminNav() {
               );
             })}
           </div>
+
+          {/* Mobile hamburger */}
+          <button
+            onClick={() => setMobileOpen(!mobileOpen)}
+            className="md:hidden p-2 rounded-lg text-brand-200 hover:text-white hover:bg-brand-800 transition-colors"
+            aria-label="Toggle menu"
+          >
+            {mobileOpen ? (
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            )}
+          </button>
         </div>
       </div>
+
+      {/* Mobile dropdown */}
+      {mobileOpen && (
+        <div className="md:hidden border-t border-brand-800 px-4 py-3 space-y-1">
+          {navItems.map((item) => {
+            const active = item.exact
+              ? pathname === item.href
+              : pathname === item.href || (isClientDetail && item.href === "/admin/clients");
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileOpen(false)}
+                className={`block px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                  active
+                    ? "bg-brand-700 text-white"
+                    : "text-brand-200 hover:text-white hover:bg-brand-800"
+                }`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </nav>
   );
 }

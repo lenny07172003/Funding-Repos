@@ -47,15 +47,15 @@ export default function OnboardPage() {
       </div>
 
       {/* Step Indicator */}
-      <div className="flex items-center gap-4">
-        {["Client Info", "Funding Agreement", "Complete"].map((label, i) => {
+      <div className="flex items-center gap-2 sm:gap-4">
+        {["Client Info", "Agreement", "Complete"].map((label, i) => {
           const stepNum = i === 0 ? "form" : i === 1 ? "agreement" : "complete";
           const active = step === stepNum;
           const completed = (step === "agreement" && i === 0) || (step === "complete" && i < 2);
           return (
-            <div key={label} className="flex items-center gap-2">
+            <div key={label} className="flex items-center gap-1.5 sm:gap-2">
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold shrink-0 ${
                   completed
                     ? "bg-emerald-500 text-white"
                     : active
@@ -64,17 +64,17 @@ export default function OnboardPage() {
                 }`}
               >
                 {completed ? (
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                   </svg>
                 ) : (
                   i + 1
                 )}
               </div>
-              <span className={`text-sm font-medium ${active ? "text-brand-700" : "text-gray-500"}`}>
+              <span className={`text-xs sm:text-sm font-medium ${active ? "text-brand-700" : "text-gray-500"}`}>
                 {label}
               </span>
-              {i < 2 && <div className="w-12 h-0.5 bg-gray-200 mx-2" />}
+              {i < 2 && <div className="w-6 sm:w-12 h-0.5 bg-gray-200 mx-1 sm:mx-2" />}
             </div>
           );
         })}
@@ -210,11 +210,11 @@ export default function OnboardPage() {
             </label>
           </div>
 
-          <div className="flex justify-between">
-            <button onClick={() => setStep("form")} className="btn-secondary">
+          <div className="flex flex-col sm:flex-row justify-between gap-3">
+            <button onClick={() => setStep("form")} className="btn-secondary order-2 sm:order-1">
               ← Back
             </button>
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3 order-1 sm:order-2">
               <button
                 onClick={() => {
                   setAgreementAccepted(false);
@@ -253,7 +253,7 @@ export default function OnboardPage() {
                 : " The funding agreement has been sent for review."}
             </p>
           </div>
-          <div className="flex justify-center gap-4">
+          <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">
             <button
               onClick={() => router.push(`/admin/clients/${clientId}`)}
               className="btn-primary"

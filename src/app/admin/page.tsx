@@ -192,7 +192,7 @@ export default function AdminDashboard() {
           <p className="text-sm text-gray-500">Funding overview &amp; metrics</p>
         </div>
         <div className="flex items-center gap-2 relative" ref={calRef}>
-          <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden text-xs">
+          <div className="flex flex-wrap bg-white border border-gray-200 rounded-lg overflow-hidden text-xs">
             {(Object.keys(TIME_LABELS) as TimeFilter[]).map((f) => (
               <button
                 key={f}
@@ -200,7 +200,7 @@ export default function AdminDashboard() {
                   setTimeFilter(f);
                   setCustomDate("");
                 }}
-                className={`px-3 py-1.5 font-medium transition-colors ${
+                className={`px-2 sm:px-3 py-1.5 font-medium transition-colors ${
                   timeFilter === f && !customDate
                     ? "bg-brand-600 text-white"
                     : "text-gray-600 hover:bg-gray-50"
@@ -291,16 +291,24 @@ export default function AdminDashboard() {
         <h2 className="text-sm font-semibold text-gray-700 mb-4">Funding by Type</h2>
         <div className="space-y-3">
           {byType.map((t) => (
-            <div key={t.type} className="flex items-center gap-3">
-              <div className="w-44 text-xs text-gray-600 shrink-0">{t.label}</div>
-              <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
-                <div
-                  className="bg-brand-600 h-full rounded-full transition-all"
-                  style={{ width: `${(t.total / maxTypeTotal) * 100}%` }}
-                />
+            <div key={t.type}>
+              <div className="flex items-center justify-between mb-1 sm:hidden">
+                <div className="text-xs text-gray-600">{t.label}</div>
+                <div className="text-xs font-medium text-gray-700">
+                  {formatCurrency(t.total)} ({t.count})
+                </div>
               </div>
-              <div className="w-28 text-right text-xs font-medium text-gray-700 shrink-0">
-                {formatCurrency(t.total)} ({t.count})
+              <div className="flex items-center gap-3">
+                <div className="w-44 text-xs text-gray-600 shrink-0 hidden sm:block">{t.label}</div>
+                <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
+                  <div
+                    className="bg-brand-600 h-full rounded-full transition-all"
+                    style={{ width: `${(t.total / maxTypeTotal) * 100}%` }}
+                  />
+                </div>
+                <div className="w-28 text-right text-xs font-medium text-gray-700 shrink-0 hidden sm:block">
+                  {formatCurrency(t.total)} ({t.count})
+                </div>
               </div>
             </div>
           ))}

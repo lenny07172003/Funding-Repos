@@ -72,12 +72,12 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
           <p className="text-gray-500 mt-1">Update your personal and business information</p>
         </div>
-        <button onClick={handleSave} className="btn-primary">
+        <button onClick={handleSave} className="btn-primary self-start sm:self-auto">
           {saved ? "Saved!" : "Save Changes"}
         </button>
       </div>

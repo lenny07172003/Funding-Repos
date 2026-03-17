@@ -72,42 +72,72 @@ export default function FundedPage() {
 
       {/* Funding Table */}
       {items.length > 0 ? (
-        <div className="card overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="table-header">Type</th>
-                <th className="table-header">Lender</th>
-                <th className="table-header">Product</th>
-                <th className="table-header">Amount</th>
-                <th className="table-header">Status</th>
-                <th className="table-header">Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {items.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="table-cell font-medium">{typeLabels[item.type] || item.type}</td>
-                  <td className="table-cell">{item.lender}</td>
-                  <td className="table-cell">{item.product}</td>
-                  <td className="table-cell font-semibold">
+        <>
+          {/* Mobile card view */}
+          <div className="mobile-card-list">
+            {items.map((item) => (
+              <div key={item.id} className="mobile-card-item">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="font-semibold text-gray-900 text-sm">{typeLabels[item.type] || item.type}</div>
+                    <div className="text-xs text-gray-500">{item.lender} {item.product ? `- ${item.product}` : ""}</div>
+                  </div>
+                  <span className={statusColors[item.status]}>
+                    {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                  <span className="font-semibold text-gray-900">
                     {item.amount ? `$${item.amount.toLocaleString()}` : "—"}
-                  </td>
-                  <td className="table-cell">
-                    <span className={statusColors[item.status]}>
-                      {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-                    </span>
-                  </td>
-                  <td className="table-cell text-gray-500">
+                  </span>
+                  <span className="text-xs text-gray-500">
                     {item.fundedDate
                       ? new Date(item.fundedDate).toLocaleDateString()
                       : new Date(item.appliedDate).toLocaleDateString()}
-                  </td>
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="card overflow-hidden table-responsive">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="table-header">Type</th>
+                  <th className="table-header">Lender</th>
+                  <th className="table-header">Product</th>
+                  <th className="table-header">Amount</th>
+                  <th className="table-header">Status</th>
+                  <th className="table-header">Date</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {items.map((item) => (
+                  <tr key={item.id} className="hover:bg-gray-50">
+                    <td className="table-cell font-medium">{typeLabels[item.type] || item.type}</td>
+                    <td className="table-cell">{item.lender}</td>
+                    <td className="table-cell">{item.product}</td>
+                    <td className="table-cell font-semibold">
+                      {item.amount ? `$${item.amount.toLocaleString()}` : "—"}
+                    </td>
+                    <td className="table-cell">
+                      <span className={statusColors[item.status]}>
+                        {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                      </span>
+                    </td>
+                    <td className="table-cell text-gray-500">
+                      {item.fundedDate
+                        ? new Date(item.fundedDate).toLocaleDateString()
+                        : new Date(item.appliedDate).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       ) : (
         <div className="card p-12 text-center text-gray-400">
           <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -136,23 +136,36 @@ export default function ClientOnboardingPage() {
     ctx.lineCap = "round";
   }, [step]);
 
-  function startDraw(e: React.MouseEvent<HTMLCanvasElement>) {
+  function getCanvasCoords(e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    if ("touches" in e) {
+      const touch = e.touches[0];
+      return { x: (touch.clientX - rect.left) * scaleX, y: (touch.clientY - rect.top) * scaleY };
+    }
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+  }
+
+  function startDraw(e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     setIsDrawing(true);
-    const rect = canvas.getBoundingClientRect();
+    const { x, y } = getCanvasCoords(e);
     ctx.beginPath();
-    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.moveTo(x, y);
   }
 
-  function draw(e: React.MouseEvent<HTMLCanvasElement>) {
+  function draw(e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) {
     if (!isDrawing || !canvasRef.current) return;
     const ctx = canvasRef.current.getContext("2d");
     if (!ctx) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    const { x, y } = getCanvasCoords(e);
+    ctx.lineTo(x, y);
     ctx.stroke();
     setHasSignature(true);
   }
@@ -501,14 +514,17 @@ export default function ClientOnboardingPage() {
                       ref={canvasRef}
                       width={600}
                       height={150}
-                      className="w-full cursor-crosshair"
+                      className="w-full cursor-crosshair touch-none"
                       onMouseDown={startDraw}
                       onMouseMove={draw}
                       onMouseUp={stopDraw}
                       onMouseLeave={stopDraw}
+                      onTouchStart={startDraw}
+                      onTouchMove={draw}
+                      onTouchEnd={stopDraw}
                     />
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">Draw your signature using your mouse or trackpad</p>
+                  <p className="text-xs text-gray-400 mt-1">Draw your signature using your finger, mouse, or trackpad</p>
                 </div>
               </div>
 

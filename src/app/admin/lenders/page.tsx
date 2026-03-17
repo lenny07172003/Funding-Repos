@@ -369,18 +369,18 @@ export default function LenderMarketplace() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3 sm:gap-4">
           <button onClick={goBack} className="text-gray-400 hover:text-gray-600">
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
               {isNew ? "Add New Lender" : editingLender.name || "Lender Details"}
             </h1>
-            <div className="flex items-center gap-3 mt-1">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1">
               {!isNew && (
                 <span
                   className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${st.bg} ${st.text}`}
@@ -397,7 +397,7 @@ export default function LenderMarketplace() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 ml-9 sm:ml-0">
           {saved && <span className="text-sm text-emerald-600 font-medium">Saved!</span>}
           {!isNew && (
             <button onClick={() => handleDelete(editingLender.id)} className="btn-danger">
@@ -520,7 +520,7 @@ export default function LenderMarketplace() {
         )}
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={testConnection}
             disabled={testing}

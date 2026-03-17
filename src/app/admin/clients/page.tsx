@@ -153,12 +153,12 @@ function AdminClientsPageInner() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">All Clients</h1>
           <p className="text-gray-500 mt-1">{clients.length} total clients</p>
         </div>
-        <Link href="/admin/onboard" className="btn-primary">
+        <Link href="/admin/onboard" className="btn-primary text-center">
           + Onboard New Client
         </Link>
       </div>
@@ -291,14 +291,78 @@ function AdminClientsPageInner() {
 
       {/* Client List */}
       {filtered.length > 0 ? (
-        <div className="card overflow-hidden">
-          <table className="w-full">
-            {renderTableHeader()}
-            <tbody className="divide-y divide-gray-100">
-              {filtered.map(renderClientRow)}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* Mobile card view */}
+          <div className="mobile-card-list">
+            {filtered.map((client) => (
+              <div key={client.id} className="mobile-card-item">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="font-semibold text-gray-900">
+                      {client.personalInfo.firstName} {client.personalInfo.lastName}
+                    </div>
+                    <div className="text-xs text-gray-500">{client.personalInfo.email}</div>
+                  </div>
+                  <span className={statusBadge[client.onboardingStatus]}>
+                    {statusLabel[client.onboardingStatus]}
+                  </span>
+                </div>
+                {client.businessInfo.businessName && (
+                  <div className="mobile-card-row">
+                    <span className="mobile-card-label">Business</span>
+                    <span className="mobile-card-value">{client.businessInfo.businessName}</span>
+                  </div>
+                )}
+                {client.referralPartner && (
+                  <div className="mobile-card-row">
+                    <span className="mobile-card-label">Referral</span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                      {client.referralPartner}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500">Funded</div>
+                      <div className="font-semibold text-emerald-600 text-sm">${client.totalFunded.toLocaleString()}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500">Pending</div>
+                      <div className="font-semibold text-amber-600 text-sm">
+                        {client.fundingApplications.filter((a) => a.status === "pending").length}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Link
+                      href={`/admin/clients/${client.id}`}
+                      className="text-brand-600 hover:text-brand-800 text-sm font-medium"
+                    >
+                      Manage
+                    </Link>
+                    <button
+                      onClick={() => handleDelete(client.id)}
+                      className="text-red-500 hover:text-red-700 text-sm"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table view */}
+          <div className="card overflow-hidden table-responsive">
+            <table className="w-full">
+              {renderTableHeader()}
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map(renderClientRow)}
+              </tbody>
+            </table>
+          </div>
+        </>
       ) : clients.length === 0 ? (
         <div className="card p-12 text-center text-gray-400">
           <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">

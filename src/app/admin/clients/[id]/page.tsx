@@ -279,29 +279,29 @@ export default function ClientDetailPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3 sm:gap-4">
           <Link href="/admin/clients" className="text-gray-400 hover:text-gray-600">
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
               {client.personalInfo.firstName} {client.personalInfo.lastName || "New Client"}
             </h1>
-            <div className="flex items-center gap-3 mt-1">
-              <span className="text-sm text-gray-500">{client.personalInfo.email || "No email"}</span>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1">
+              <span className="text-sm text-gray-500 break-all">{client.personalInfo.email || "No email"}</span>
               <span className={statusBadge[client.onboardingStatus]}>
                 {statusLabel[client.onboardingStatus]}
               </span>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 ml-9 sm:ml-0">
           {saved && <span className="text-sm text-emerald-600 font-medium">Saved!</span>}
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">Status:</span>
+            <span className="text-sm text-gray-500 hidden sm:inline">Status:</span>
             <select
               className="input-field w-auto text-sm"
               value={client.onboardingStatus}
@@ -338,9 +338,9 @@ export default function ClientDetailPage() {
 
       {/* Client Onboarding Panel */}
       <div className="bg-white border border-gray-200 rounded-lg p-5">
-        <div className="flex items-start justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-brand-100 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-brand-100 rounded-lg flex items-center justify-center shrink-0">
               <svg className="w-5 h-5 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
@@ -385,8 +385,8 @@ export default function ClientDetailPage() {
 
         {/* Onboarding Link Preview */}
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="min-w-0">
               <p className="text-xs text-gray-500 mb-1">Client Onboarding Link</p>
               <p className="text-sm font-mono text-brand-700 break-all">{onboardingLink}</p>
             </div>
@@ -396,7 +396,7 @@ export default function ClientDetailPage() {
                 setSaved(true);
                 setTimeout(() => setSaved(false), 2000);
               }}
-              className="btn-secondary text-xs px-3 py-1.5 shrink-0 ml-3"
+              className="btn-secondary text-xs px-3 py-1.5 shrink-0 self-start sm:self-auto"
             >
               Copy Link
             </button>
@@ -493,13 +493,13 @@ export default function ClientDetailPage() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="border-b border-gray-200">
-        <div className="flex gap-0 -mb-px">
+      <div className="border-b border-gray-200 -mx-4 px-4 sm:mx-0 sm:px-0">
+        <div className="flex gap-0 -mb-px overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-3 sm:px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab.key
                   ? "border-brand-600 text-brand-600"
                   : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
@@ -811,7 +811,7 @@ export default function ClientDetailPage() {
                 </div>
 
                 {/* Pipeline Stage Counts */}
-                <div className="grid grid-cols-5 gap-3">
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-3">
                   {[
                     { label: "Pending", count: pending.length, color: "text-gray-600", bg: "bg-gray-100", border: "border-gray-200" },
                     { label: "Applied", count: applied.length, color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200" },
@@ -889,7 +889,7 @@ export default function ClientDetailPage() {
           })()}
 
           {/* Summary by Type */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
             {appTypes.map((type) => {
               const apps = client.fundingApplications.filter((a) => a.type === type.value);
               const funded = apps.filter((a) => a.status === "funded").reduce((s, a) => s + (a.amount || 0), 0);

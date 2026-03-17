@@ -60,7 +60,7 @@ export default function CreditPage() {
       {/* Score Overview */}
       <div className="card p-6">
         <h2 className="text-lg font-semibold text-brand-900 mb-6">Credit Scores</h2>
-        <div className="flex flex-wrap justify-center gap-12">
+        <div className="flex flex-wrap justify-center gap-6 sm:gap-12">
           {bureaus.map((b) => (
             <div key={b.bureau} className="text-center">
               <ScoreGauge score={b.score} />
