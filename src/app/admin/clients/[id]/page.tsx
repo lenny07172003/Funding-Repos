@@ -166,6 +166,7 @@ export default function ClientDetailPage() {
 
   function removeApplication(id: string) {
     if (!client) return;
+    if (!confirm("Remove this application? This cannot be undone.")) return;
     const removed = client.fundingApplications.find((a) => a.id === id);
     const updated = {
       ...client,
@@ -1405,6 +1406,7 @@ export default function ClientDetailPage() {
                     {/* Remove */}
                     <button
                       onClick={() => {
+                        if (!confirm("Remove this document? This cannot be undone.")) return;
                         const updated = { ...client, documents: client.documents.filter((d) => d.id !== doc.id) };
                         save(updated);
                       }}

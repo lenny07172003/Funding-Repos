@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { getClients, syncLendersFromClients } from "@/lib/store";
 import { Client, FundingApplication } from "@/lib/types";
 
@@ -250,18 +251,18 @@ export default function AdminDashboard() {
         <div className="bg-white border border-gray-200 rounded-lg p-5">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Clients</h2>
           <div className="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <div className="text-2xl font-bold text-gray-900">{totalClients}</div>
+            <Link href="/admin/clients" className="group hover:bg-gray-50 rounded-lg p-1 transition-colors">
+              <div className="text-2xl font-bold text-gray-900 group-hover:text-brand-600">{totalClients}</div>
               <div className="text-xs text-gray-500">Total in CRM</div>
-            </div>
-            <div>
+            </Link>
+            <Link href="/admin/clients?appStatus=funded" className="group hover:bg-emerald-50 rounded-lg p-1 transition-colors">
               <div className="text-2xl font-bold text-emerald-600">{fundedClients}</div>
               <div className="text-xs text-gray-500">Funded</div>
-            </div>
-            <div>
+            </Link>
+            <Link href="/admin/clients?appStatus=approved" className="group hover:bg-amber-50 rounded-lg p-1 transition-colors">
               <div className="text-2xl font-bold text-amber-600">{inFundingClients}</div>
               <div className="text-xs text-gray-500">In Funding</div>
-            </div>
+            </Link>
           </div>
         </div>
 
@@ -269,18 +270,18 @@ export default function AdminDashboard() {
         <div className="bg-white border border-gray-200 rounded-lg p-5">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Pipeline</h2>
           <div className="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <div className="text-2xl font-bold text-gray-500">{pipelinePending}</div>
+            <Link href="/admin/clients?appStatus=pending" className="group hover:bg-gray-50 rounded-lg p-1 transition-colors">
+              <div className="text-2xl font-bold text-gray-500 group-hover:text-gray-700">{pipelinePending}</div>
               <div className="text-xs text-gray-500">Pending</div>
-            </div>
-            <div>
+            </Link>
+            <Link href="/admin/clients?appStatus=applied" className="group hover:bg-blue-50 rounded-lg p-1 transition-colors">
               <div className="text-2xl font-bold text-blue-600">{pipelineApplied}</div>
               <div className="text-xs text-gray-500">Applied</div>
-            </div>
-            <div>
+            </Link>
+            <Link href="/admin/clients?appStatus=approved" className="group hover:bg-emerald-50 rounded-lg p-1 transition-colors">
               <div className="text-2xl font-bold text-emerald-600">{pipelineApproved}</div>
               <div className="text-xs text-gray-500">Approved</div>
-            </div>
+            </Link>
           </div>
         </div>
       </div>

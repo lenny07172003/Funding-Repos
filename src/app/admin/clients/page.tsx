@@ -1,14 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Client } from "@/lib/types";
 import { getClients, deleteClient, getReferralPartners, saveReferralPartners } from "@/lib/store";
 
-export default function AdminClientsPage() {
+function AdminClientsPageInner() {
+  const searchParams = useSearchParams();
   const [clients, setClients] = useState<Client[]>([]);
   const [search, setSearch] = useState("");
   const [referralFilter, setReferralFilter] = useState("all");
+  const [appStatusFilter, setAppStatusFilter] = useState(searchParams.get("appStatus") || "all");
 
   const [showPartnerManager, setShowPartnerManager] = useState(false);
   const [savedPartners, setSavedPartners] = useState<string[]>([]);
@@ -60,7 +63,10 @@ export default function AdminClientsPage() {
       referralFilter === "all" ||
       (referralFilter === "none" && !c.referralPartner) ||
       c.referralPartner === referralFilter;
-    return matchesSearch && matchesReferral;
+    const matchesAppStatus =
+      appStatusFilter === "all" ||
+      c.fundingApplications.some((a) => a.status === appStatusFilter);
+    return matchesSearch && matchesReferral && matchesAppStatus;
   });
 
   const statusBadge: Record<string, string> = {
@@ -185,6 +191,14 @@ export default function AdminClientsPage() {
             </select>
           </div>
 
+          {/* Active app status filter badge */}
+          {appStatusFilter !== "all" && (
+            <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 text-sm px-3 py-1.5 rounded-lg">
+              <span>Showing: <strong className="capitalize">{appStatusFilter}</strong> applications</span>
+              <button onClick={() => setAppStatusFilter("all")} className="ml-1 text-blue-500 hover:text-blue-700">✕</button>
+            </div>
+          )}
+
           {/* Manage Partners Toggle */}
           <button
             onClick={() => setShowPartnerManager(!showPartnerManager)}
@@ -299,5 +313,13 @@ export default function AdminClientsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AdminClientsPage() {
+  return (
+    <Suspense>
+      <AdminClientsPageInner />
+    </Suspense>
   );
 }
