@@ -158,10 +158,10 @@ export default function AdminDashboard() {
     return { type, label: TYPE_LABELS[type], count: apps.length, total };
   });
 
-  // Funding by lender + product
-  const lenderMap = new Map<string, { lender: string; product: string; count: number; total: number }>();
+  // Funding by lender
+  const lenderMap = new Map<string, { lender: string; count: number; total: number }>();
   filtered.forEach((a) => {
-    const key = `${a.lender}|||${a.product}`;
+    const key = a.lender || "Unknown";
     const existing = lenderMap.get(key);
     if (existing) {
       existing.count++;
@@ -169,7 +169,6 @@ export default function AdminDashboard() {
     } else {
       lenderMap.set(key, {
         lender: a.lender,
-        product: a.product,
         count: 1,
         total: a.amount || 0,
       });
@@ -304,9 +303,9 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Funded by Lender + Product */}
+      {/* Funded by Lender */}
       <div className="bg-white border border-gray-200 rounded-lg p-5">
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">Funded by Lender &amp; Product</h2>
+        <h2 className="text-sm font-semibold text-gray-700 mb-3">Funded by Lender</h2>
         {byLender.length === 0 ? (
           <p className="text-xs text-gray-400">No funded applications to display.</p>
         ) : (
@@ -315,7 +314,6 @@ export default function AdminDashboard() {
               <thead>
                 <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
                   <th className="pb-2 font-medium">Lender</th>
-                  <th className="pb-2 font-medium">Product</th>
                   <th className="pb-2 font-medium text-right">Deals</th>
                   <th className="pb-2 font-medium text-right">Total Funded</th>
                 </tr>
@@ -324,7 +322,6 @@ export default function AdminDashboard() {
                 {byLender.map((row, i) => (
                   <tr key={i} className="border-b border-gray-50">
                     <td className="py-2 text-gray-800">{row.lender || "—"}</td>
-                    <td className="py-2 text-gray-600">{row.product || "—"}</td>
                     <td className="py-2 text-right text-gray-700">{row.count}</td>
                     <td className="py-2 text-right font-medium text-gray-900">
                       {formatCurrency(row.total)}
