@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Client, FundingApplication, CreditBureauData } from "@/lib/types";
@@ -48,6 +48,9 @@ export default function ClientDetailPage() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [savedPartners, setSavedPartners] = useState<string[]>([]);
   const [lenderNames, setLenderNames] = useState<string[]>([]);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const dragNodeRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const c = getClient(params.id as string);
@@ -146,6 +149,14 @@ export default function ClientDetailPage() {
       fundingApplications: client.fundingApplications.filter((a) => a.id !== id),
     };
     save(updated);
+  }
+
+  function reorderApplications(fromIndex: number, toIndex: number) {
+    if (!client || fromIndex === toIndex) return;
+    const apps = [...client.fundingApplications];
+    const [moved] = apps.splice(fromIndex, 1);
+    apps.splice(toIndex, 0, moved);
+    save({ ...client, fundingApplications: apps });
   }
 
   function saveApiSettings() {
@@ -866,9 +877,50 @@ export default function ClientDetailPage() {
           {client.fundingApplications.length > 0 ? (
             <div className="space-y-4">
               {client.fundingApplications.map((app, index) => (
-                <div key={app.id} className="card p-5">
+                <div
+                  key={app.id}
+                  draggable
+                  onDragStart={(e) => {
+                    setDragIndex(index);
+                    dragNodeRef.current = e.currentTarget as HTMLDivElement;
+                    e.dataTransfer.effectAllowed = "move";
+                    requestAnimationFrame(() => {
+                      if (dragNodeRef.current) dragNodeRef.current.style.opacity = "0.4";
+                    });
+                  }}
+                  onDragEnd={() => {
+                    if (dragNodeRef.current) dragNodeRef.current.style.opacity = "1";
+                    if (dragIndex !== null && dragOverIndex !== null) {
+                      reorderApplications(dragIndex, dragOverIndex);
+                    }
+                    setDragIndex(null);
+                    setDragOverIndex(null);
+                    dragNodeRef.current = null;
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    setDragOverIndex(index);
+                  }}
+                  onDragEnter={(e) => {
+                    e.preventDefault();
+                    setDragOverIndex(index);
+                  }}
+                  className={`card p-5 transition-all ${
+                    dragOverIndex === index && dragIndex !== null && dragIndex !== index
+                      ? "border-blue-400 border-2 shadow-lg"
+                      : ""
+                  }`}
+                >
                   <div className="flex items-center justify-between mb-4">
-                    <span className="text-sm font-semibold text-gray-500">Application #{index + 1}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600" title="Drag to reorder">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                        </svg>
+                      </span>
+                      <span className="text-sm font-semibold text-gray-500">Application #{index + 1}</span>
+                    </div>
                     <button
                       onClick={() => removeApplication(app.id)}
                       className="text-red-500 hover:text-red-700 text-sm"
