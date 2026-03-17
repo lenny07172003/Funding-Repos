@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { getClients } from "@/lib/store";
+import { getClients, ensureLenderByName } from "@/lib/store";
 import { Client, FundingApplication } from "@/lib/types";
 
 type TimeFilter = "all" | "year" | "quarter" | "month" | "week" | "day";
@@ -95,7 +95,14 @@ export default function AdminDashboard() {
   const calRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setClients(getClients());
+    const allClients = getClients();
+    setClients(allClients);
+    // Sync any lender names from applications into the marketplace
+    allClients.forEach((c) => {
+      c.fundingApplications.forEach((a) => {
+        if (a.lender?.trim()) ensureLenderByName(a.lender);
+      });
+    });
   }, []);
 
   useEffect(() => {
@@ -158,17 +165,18 @@ export default function AdminDashboard() {
     return { type, label: TYPE_LABELS[type], count: apps.length, total };
   });
 
-  // Funding by lender
+  // Funding by lender (normalized to prevent duplicates)
   const lenderMap = new Map<string, { lender: string; count: number; total: number }>();
   filtered.forEach((a) => {
-    const key = a.lender || "Unknown";
+    const name = a.lender?.trim() || "Unknown";
+    const key = name.toLowerCase();
     const existing = lenderMap.get(key);
     if (existing) {
       existing.count++;
       existing.total += a.amount || 0;
     } else {
       lenderMap.set(key, {
-        lender: a.lender,
+        lender: name,
         count: 1,
         total: a.amount || 0,
       });
