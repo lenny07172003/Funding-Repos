@@ -183,6 +183,19 @@ export function getLender(id: string): Lender | undefined {
   return getLenders().find((l) => l.id === id);
 }
 
+export function ensureLenderByName(name: string) {
+  if (!name.trim()) return;
+  const lenders = getLenders();
+  const exists = lenders.some((l) => l.name.toLowerCase() === name.trim().toLowerCase());
+  if (!exists) {
+    const lender = createEmptyLender();
+    lender.name = name.trim();
+    lender.logo = name.trim().charAt(0).toUpperCase();
+    lenders.push(lender);
+    saveLenders(lenders);
+  }
+}
+
 export function upsertLender(lender: Lender) {
   const lenders = getLenders();
   const idx = lenders.findIndex((l) => l.id === lender.id);

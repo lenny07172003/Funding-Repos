@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Client, FundingApplication, CreditBureauData } from "@/lib/types";
-import { getClient, upsertClient, getApiKey, setApiKey, getApiProvider, setApiProvider, getReferralPartners } from "@/lib/store";
+import { getClient, upsertClient, getApiKey, setApiKey, getApiProvider, setApiProvider, getReferralPartners, getLenders, ensureLenderByName } from "@/lib/store";
 
 type Tab = "credit" | "business" | "applications" | "documents" | "notes";
 
@@ -47,6 +47,7 @@ export default function ClientDetailPage() {
   const [uploadCustomName, setUploadCustomName] = useState("");
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [savedPartners, setSavedPartners] = useState<string[]>([]);
+  const [lenderNames, setLenderNames] = useState<string[]>([]);
 
   useEffect(() => {
     const c = getClient(params.id as string);
@@ -58,6 +59,7 @@ export default function ClientDetailPage() {
     setApiKeyState(getApiKey());
     setApiProviderState(getApiProvider());
     setSavedPartners(getReferralPartners());
+    setLenderNames(getLenders().map((l) => l.name).filter(Boolean).sort());
   }, [params.id, router]);
 
   function save(updated: Client) {
@@ -128,6 +130,11 @@ export default function ClientDetailPage() {
       app.amount = value === "" ? null : Number(value);
     } else {
       (app as any)[field] = value;
+    }
+    // Auto-add lender to marketplace when name is set
+    if (field === "lender" && value.trim()) {
+      ensureLenderByName(value);
+      setLenderNames(getLenders().map((l) => l.name).filter(Boolean).sort());
     }
     save(updated);
   }
@@ -886,10 +893,16 @@ export default function ClientDetailPage() {
                       <label className="label">Lender</label>
                       <input
                         className="input-field"
-                        placeholder="e.g. Chase, Amex"
+                        placeholder="Type or select a lender..."
+                        list={`lender-list-${app.id}`}
                         value={app.lender}
                         onChange={(e) => updateApplication(app.id, "lender", e.target.value)}
                       />
+                      <datalist id={`lender-list-${app.id}`}>
+                        {lenderNames.map((name) => (
+                          <option key={name} value={name} />
+                        ))}
+                      </datalist>
                     </div>
                     <div>
                       <label className="label">Product</label>
