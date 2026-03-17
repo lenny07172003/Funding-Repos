@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Lender, ApplicationType } from "@/lib/types";
-import { getLenders, upsertLender, deleteLender, createEmptyLender } from "@/lib/store";
+import { getLenders, upsertLender, deleteLender, createEmptyLender, syncLendersFromClients } from "@/lib/store";
 
 const PRODUCT_OPTIONS: { value: ApplicationType; label: string }[] = [
   { value: "credit_card", label: "Credit Cards" },
@@ -43,6 +43,8 @@ export default function LenderMarketplace() {
   const [testing, setTesting] = useState(false);
 
   useEffect(() => {
+    // Clean up: only keep lenders actually used in client applications or manually configured
+    syncLendersFromClients();
     setLenders(getLenders());
   }, []);
 

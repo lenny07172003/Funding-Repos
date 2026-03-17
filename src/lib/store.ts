@@ -197,6 +197,41 @@ export function ensureLenderByName(name: string) {
   }
 }
 
+export function syncLendersFromClients() {
+  // Collect all lender names actually used in client applications
+  const clients = getClients();
+  const usedNames = new Set<string>();
+  clients.forEach((c) => {
+    c.fundingApplications.forEach((a) => {
+      if (a.lender?.trim()) usedNames.add(a.lender.trim().toLowerCase());
+    });
+  });
+
+  // Keep lenders that are either used in applications or manually configured
+  const lenders = getLenders();
+  const kept = lenders.filter((l) => {
+    const nameKey = l.name.trim().toLowerCase();
+    if (!nameKey) return false; // remove blank-name lenders
+    if (usedNames.has(nameKey)) return true; // used in an application
+    if (l.status === "connected" || l.apiKey || l.contactName) return true; // manually configured
+    return false;
+  });
+
+  // Also ensure any used lender that's missing gets created
+  usedNames.forEach((name) => {
+    const exists = kept.some((l) => l.name.trim().toLowerCase() === name);
+    if (!exists) {
+      const lender = createEmptyLender();
+      lender.name = name.charAt(0).toUpperCase() + name.slice(1);
+      lender.logo = name.charAt(0).toUpperCase();
+      kept.push(lender);
+    }
+  });
+
+  saveLenders(kept);
+  return kept;
+}
+
 export function upsertLender(lender: Lender) {
   const lenders = getLenders();
   const idx = lenders.findIndex((l) => l.id === lender.id);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { getClients, ensureLenderByName } from "@/lib/store";
+import { getClients, syncLendersFromClients } from "@/lib/store";
 import { Client, FundingApplication } from "@/lib/types";
 
 type TimeFilter = "all" | "year" | "quarter" | "month" | "week" | "day";
@@ -95,14 +95,9 @@ export default function AdminDashboard() {
   const calRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const allClients = getClients();
-    setClients(allClients);
-    // Sync any lender names from applications into the marketplace
-    allClients.forEach((c) => {
-      c.fundingApplications.forEach((a) => {
-        if (a.lender?.trim()) ensureLenderByName(a.lender);
-      });
-    });
+    setClients(getClients());
+    // Sync lender marketplace: remove unused lenders, add any missing from applications
+    syncLendersFromClients();
   }, []);
 
   useEffect(() => {
