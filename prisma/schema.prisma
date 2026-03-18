@@ -1,0 +1,243 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+
+// ─── Agency (top-level org — the reseller / white-label owner) ───
+
+model Agency {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // White-label branding
+  brandName    String @default("")
+  brandLogo    String @default("") // URL or base64
+  brandFavicon String @default("")
+  primaryColor String @default("#3b82f6") // hex color
+  customDomain String @default("") // e.g. "app.clientsfirm.com"
+
+  subAccounts SubAccount[]
+  users       User[]
+}
+
+// ─── SubAccount (tenant — each gets its own isolated Admin Dashboard) ───
+
+model SubAccount {
+  id        String   @id @default(cuid())
+  agencyId  String
+  name      String
+  slug      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agency           Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  users            User[]
+  clients          Client[]
+  lenders          Lender[]
+  referralPartners ReferralPartner[]
+
+  @@unique([agencyId, slug])
+}
+
+// ─── User (admin accounts with login credentials) ───
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         String    @default("ACCOUNT_ADMIN") // SUPER_ADMIN, AGENCY_ADMIN, ACCOUNT_ADMIN
+  agencyId     String?
+  subAccountId String?
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  agency     Agency?     @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  subAccount SubAccount? @relation(fields: [subAccountId], references: [id], onDelete: Cascade)
+}
+
+// ─── Client (CRM client record — scoped to sub-account) ───
+
+model Client {
+  id           String @id @default(cuid())
+  subAccountId String
+
+  // Personal info
+  firstName   String @default("")
+  lastName    String @default("")
+  email       String @default("")
+  phone       String @default("")
+  ssn         String @default("") // encrypted at app layer
+  dateOfBirth String @default("")
+  address     String @default("")
+  city        String @default("")
+  state       String @default("")
+  zip         String @default("")
+
+  // Business info
+  businessName         String @default("")
+  businessAge          String @default("")
+  naicsCode            String @default("")
+  sicCode              String @default("")
+  ein                  String @default("")
+  businessAddress      String @default("")
+  businessPhone        String @default("")
+  annualRevenue        String @default("")
+  entityType           String @default("")
+  stateOfIncorporation String @default("")
+
+  // Credit profile (stored as JSON for flexibility)
+  creditProfile String @default("{\"experian\":{\"score\":null,\"accounts\":null,\"creditAge\":\"\",\"derogatoryAccounts\":null,\"highestCreditLimit\":null,\"inquiries\":null},\"equifax\":{\"score\":null,\"accounts\":null,\"creditAge\":\"\",\"derogatoryAccounts\":null,\"highestCreditLimit\":null,\"inquiries\":null},\"transUnion\":{\"score\":null,\"accounts\":null,\"creditAge\":\"\",\"derogatoryAccounts\":null,\"highestCreditLimit\":null,\"inquiries\":null},\"apiKeyConfigured\":false,\"lastPulled\":null}")
+
+  // Onboarding
+  onboardingStatus         String @default("not_started")
+  onboardedAt              String?
+  onboardingEmailSentAt    String?
+  onboardingCompletedSteps String @default("{\"agreement\":false,\"businessForm\":false,\"creditMonitoring\":false}")
+
+  // Funding totals
+  totalFunded   Float @default(0)
+  totalApproved Float @default(0)
+
+  // Notes
+  notes String @default("")
+
+  // Agreement
+  agreementSignature String? // JSON string
+
+  // Credit monitoring
+  creditMonitoringStatus   String @default("not_started")
+  creditMonitoringProvider String @default("")
+  creditMonitoringUsername String @default("")
+  creditMonitoringPassword String @default("") // encrypted at app layer
+
+  // Referral
+  referralPartner String @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subAccount          SubAccount           @relation(fields: [subAccountId], references: [id], onDelete: Cascade)
+  fundingApplications FundingApplication[]
+  documents           Document[]
+  activityLog         ActivityEntry[]
+}
+
+// ─── FundingApplication ───
+
+model FundingApplication {
+  id       String @id @default(cuid())
+  clientId String
+
+  type         String // credit_card, line_of_credit, term_loan, mca, equipment_financing, sba
+  lender       String  @default("")
+  product      String  @default("")
+  amount       Float?
+  status       String  @default("pending")
+  appliedDate  String  @default("")
+  approvedDate String?
+  fundedDate   String?
+  notes        String  @default("")
+  sortOrder    Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+// ─── Document ───
+
+model Document {
+  id       String @id @default(cuid())
+  clientId String
+
+  name       String
+  type       String @default("")
+  uploadedAt String
+  status     String @default("pending")
+  fileName   String @default("")
+  fileData   String @default("")
+  fileSize   Int    @default(0)
+  source     String @default("admin")
+
+  createdAt DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+// ─── ActivityEntry ───
+
+model ActivityEntry {
+  id       String @id @default(cuid())
+  clientId String
+
+  timestamp String
+  type      String
+  message   String
+  details   String?
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+// ─── Lender (scoped to sub-account) ───
+
+model Lender {
+  id           String @id @default(cuid())
+  subAccountId String
+
+  name              String  @default("")
+  logo              String  @default("")
+  description       String  @default("")
+  website           String  @default("")
+  apiKey            String  @default("")
+  apiEndpoint       String  @default("")
+  apiSecret         String  @default("")
+  status            String  @default("disconnected")
+  supportedProducts String  @default("[]") // JSON array
+  minCreditScore    Int?
+  maxLoanAmount     Float?
+  minLoanAmount     Float?
+  interestRateRange String  @default("")
+  termRange         String  @default("")
+  avgApprovalTime   String  @default("")
+  totalFunded       Float   @default(0)
+  totalDeals        Int     @default(0)
+  approvalRate      Float?
+  contactName       String  @default("")
+  contactEmail      String  @default("")
+  contactPhone      String  @default("")
+  notes             String  @default("")
+  connectedAt       String?
+  lastSyncAt        String?
+  webhookUrl        String  @default("")
+  sandboxMode       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subAccount SubAccount @relation(fields: [subAccountId], references: [id], onDelete: Cascade)
+}
+
+// ─── ReferralPartner (scoped to sub-account) ───
+
+model ReferralPartner {
+  id           String @id @default(cuid())
+  subAccountId String
+  name         String
+
+  createdAt DateTime @default(now())
+
+  subAccount SubAccount @relation(fields: [subAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([subAccountId, name])
+}
