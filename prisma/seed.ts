@@ -4,24 +4,14 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
-  // Create default agency
-  const agency = await prisma.agency.upsert({
+  // Create default sub-account (white-label account)
+  const subAccount = await prisma.subAccount.upsert({
     where: { slug: "default" },
     update: {},
     create: {
-      name: "Default Agency",
-      slug: "default",
-    },
-  });
-
-  // Create default sub-account
-  const subAccount = await prisma.subAccount.upsert({
-    where: { agencyId_slug: { agencyId: agency.id, slug: "main" } },
-    update: {},
-    create: {
       name: "Main Account",
-      slug: "main",
-      agencyId: agency.id,
+      slug: "default",
+      brandName: "Funding CRM",
     },
   });
 
@@ -35,14 +25,12 @@ async function main() {
       name: "Admin",
       passwordHash,
       role: "SUPER_ADMIN",
-      agencyId: agency.id,
       subAccountId: subAccount.id,
     },
   });
 
   console.log("Seeded:");
-  console.log("  Agency:", agency.name);
-  console.log("  Sub-account:", subAccount.name);
+  console.log("  Account:", subAccount.name);
   console.log("  Admin user:", admin.email);
   console.log("");
   console.log("Login credentials:");

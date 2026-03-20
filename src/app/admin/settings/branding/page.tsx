@@ -3,14 +3,14 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { updateAgencyBranding, getAgencyForUser } from "@/lib/actions";
+import { updateSubAccountBranding, getSubAccountForUser } from "@/lib/actions";
 
 function BrandingPageInner() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const user = session?.user as any;
-  const agencyIdParam = searchParams.get("agencyId");
-  const agencyId = agencyIdParam || user?.agencyId;
+  const accountIdParam = searchParams.get("accountId");
+  const subAccountId = accountIdParam || user?.subAccountId;
 
   const [branding, setBranding] = useState({
     brandName: "",
@@ -24,18 +24,18 @@ function BrandingPageInner() {
 
   useEffect(() => {
     loadBranding();
-  }, [agencyId]);
+  }, [subAccountId]);
 
   async function loadBranding() {
     try {
-      const agency = await getAgencyForUser();
-      if (agency) {
+      const account = await getSubAccountForUser();
+      if (account) {
         setBranding({
-          brandName: agency.brandName || "",
-          brandLogo: agency.brandLogo || "",
-          brandFavicon: agency.brandFavicon || "",
-          primaryColor: agency.primaryColor || "#3b82f6",
-          customDomain: agency.customDomain || "",
+          brandName: account.brandName || "",
+          brandLogo: account.brandLogo || "",
+          brandFavicon: account.brandFavicon || "",
+          primaryColor: account.primaryColor || "#3b82f6",
+          customDomain: account.customDomain || "",
         });
       }
     } catch {}
@@ -43,10 +43,10 @@ function BrandingPageInner() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!agencyId) return;
+    if (!subAccountId) return;
     setLoading(true);
     try {
-      await updateAgencyBranding(agencyId, branding);
+      await updateSubAccountBranding(subAccountId, branding);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err: any) {
@@ -55,10 +55,10 @@ function BrandingPageInner() {
     setLoading(false);
   }
 
-  if (!agencyId) {
+  if (!subAccountId) {
     return (
       <div className="card p-12 text-center text-gray-400">
-        <p>No agency context. Contact your administrator.</p>
+        <p>No account context. Contact your administrator.</p>
       </div>
     );
   }
@@ -68,7 +68,7 @@ function BrandingPageInner() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">White-Label Branding</h1>
-          <p className="text-gray-500 mt-1">Customize the look and feel for your agency</p>
+          <p className="text-gray-500 mt-1">Customize the look and feel for your account</p>
         </div>
         {saved && <span className="text-emerald-600 font-medium text-sm">Saved!</span>}
       </div>

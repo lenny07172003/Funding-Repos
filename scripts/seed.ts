@@ -1,5 +1,5 @@
 /**
- * Seed script — creates initial super admin, agency, and sub-account.
+ * Seed script — creates initial super admin and default account.
  *
  * Usage:
  *   npx tsx scripts/seed.ts
@@ -21,8 +21,8 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("Seeding database...\n");
 
-  // 1. Create default agency
-  const agency = await prisma.agency.upsert({
+  // 1. Create default account
+  const subAccount = await prisma.subAccount.upsert({
     where: { slug: "default" },
     update: {},
     create: {
@@ -32,21 +32,9 @@ async function main() {
       primaryColor: "#3b82f6",
     },
   });
-  console.log(`Agency: ${agency.name} (${agency.id})`);
+  console.log(`Account: ${subAccount.name} (${subAccount.id})`);
 
-  // 2. Create default sub-account
-  const subAccount = await prisma.subAccount.upsert({
-    where: { agencyId_slug: { agencyId: agency.id, slug: "main" } },
-    update: {},
-    create: {
-      agencyId: agency.id,
-      name: "Main Account",
-      slug: "main",
-    },
-  });
-  console.log(`Sub-Account: ${subAccount.name} (${subAccount.id})`);
-
-  // 3. Create super admin user
+  // 2. Create super admin user
   const passwordHash = await bcrypt.hash("Admin123!", 12);
   const superAdmin = await prisma.user.upsert({
     where: { email: "admin@fundingcrm.com" },
@@ -56,7 +44,6 @@ async function main() {
       passwordHash,
       name: "Super Admin",
       role: "SUPER_ADMIN",
-      agencyId: agency.id,
       subAccountId: subAccount.id,
     },
   });

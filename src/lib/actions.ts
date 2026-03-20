@@ -21,34 +21,37 @@ function slugify(text: string): string {
     .replace(/^-|-$/g, "");
 }
 
-// ─── Agency Actions ───
+// ─── Sub-Account Actions (Super Admin manages white-label accounts) ───
 
-export async function getAgencies() {
+export async function getSubAccounts() {
   const user = await getSession();
   if (user.role !== "SUPER_ADMIN") throw new Error("Forbidden");
-  return prisma.agency.findMany({
-    include: { _count: { select: { subAccounts: true, users: true } } },
+  return prisma.subAccount.findMany({
+    include: { _count: { select: { users: true, clients: true } } },
     orderBy: { createdAt: "desc" },
   });
 }
 
-export async function createAgency(data: { name: string; slug?: string }) {
+export async function createSubAccount(data: { name: string; slug?: string }) {
   const user = await getSession();
   if (user.role !== "SUPER_ADMIN") throw new Error("Forbidden");
   const slug = data.slug || slugify(data.name);
-  const agency = await prisma.agency.create({
+  const account = await prisma.subAccount.create({
     data: { name: data.name, slug, brandName: data.name },
   });
-  // Create a default sub-account
-  await prisma.subAccount.create({
-    data: { agencyId: agency.id, name: "Main Account", slug: "main" },
-  });
   revalidatePath("/admin/agencies");
-  return agency;
+  return account;
 }
 
-export async function updateAgencyBranding(
-  agencyId: string,
+export async function deleteSubAccount(subAccountId: string) {
+  const user = await getSession();
+  if (user.role !== "SUPER_ADMIN") throw new Error("Forbidden");
+  await prisma.subAccount.delete({ where: { id: subAccountId } });
+  revalidatePath("/admin/agencies");
+}
+
+export async function updateSubAccountBranding(
+  subAccountId: string,
   data: {
     brandName?: string;
     brandLogo?: string;
@@ -58,57 +61,14 @@ export async function updateAgencyBranding(
   }
 ) {
   const user = await getSession();
-  if (user.role !== "SUPER_ADMIN" && user.agencyId !== agencyId) throw new Error("Forbidden");
-  const agency = await prisma.agency.update({
-    where: { id: agencyId },
+  if (user.role !== "SUPER_ADMIN" && user.subAccountId !== subAccountId) throw new Error("Forbidden");
+  const account = await prisma.subAccount.update({
+    where: { id: subAccountId },
     data,
   });
   revalidatePath("/admin/agencies");
   revalidatePath("/admin/settings/branding");
-  return agency;
-}
-
-export async function deleteAgency(agencyId: string) {
-  const user = await getSession();
-  if (user.role !== "SUPER_ADMIN") throw new Error("Forbidden");
-  await prisma.agency.delete({ where: { id: agencyId } });
-  revalidatePath("/admin/agencies");
-}
-
-// ─── Sub-Account Actions ───
-
-export async function getSubAccounts(agencyId: string) {
-  const user = await getSession();
-  if (user.role !== "SUPER_ADMIN" && user.agencyId !== agencyId) throw new Error("Forbidden");
-  return prisma.subAccount.findMany({
-    where: { agencyId },
-    include: { _count: { select: { users: true, clients: true } } },
-    orderBy: { createdAt: "desc" },
-  });
-}
-
-export async function createSubAccount(agencyId: string, data: { name: string; slug?: string }) {
-  const user = await getSession();
-  if (user.role === "ACCOUNT_ADMIN") throw new Error("Forbidden");
-  if (user.role === "AGENCY_ADMIN" && user.agencyId !== agencyId) throw new Error("Forbidden");
-  const slug = data.slug || slugify(data.name);
-  const account = await prisma.subAccount.create({
-    data: { agencyId, name: data.name, slug },
-  });
-  revalidatePath("/admin/agencies");
-  revalidatePath("/admin/accounts");
   return account;
-}
-
-export async function deleteSubAccount(subAccountId: string) {
-  const user = await getSession();
-  if (user.role === "ACCOUNT_ADMIN") throw new Error("Forbidden");
-  const account = await prisma.subAccount.findUnique({ where: { id: subAccountId } });
-  if (!account) throw new Error("Not found");
-  if (user.role === "AGENCY_ADMIN" && user.agencyId !== account.agencyId) throw new Error("Forbidden");
-  await prisma.subAccount.delete({ where: { id: subAccountId } });
-  revalidatePath("/admin/agencies");
-  revalidatePath("/admin/accounts");
 }
 
 // ─── User Actions ───
@@ -118,21 +78,14 @@ export async function getUsers(subAccountId?: string) {
   if (user.role === "SUPER_ADMIN") {
     return prisma.user.findMany({
       where: subAccountId ? { subAccountId } : undefined,
-      include: { agency: true, subAccount: true },
-      orderBy: { createdAt: "desc" },
-    });
-  }
-  if (user.role === "AGENCY_ADMIN") {
-    return prisma.user.findMany({
-      where: { agencyId: user.agencyId!, ...(subAccountId ? { subAccountId } : {}) },
-      include: { agency: true, subAccount: true },
+      include: { subAccount: true },
       orderBy: { createdAt: "desc" },
     });
   }
   // ACCOUNT_ADMIN can only see their own sub-account's users
   return prisma.user.findMany({
     where: { subAccountId: user.subAccountId! },
-    include: { agency: true, subAccount: true },
+    include: { subAccount: true },
     orderBy: { createdAt: "desc" },
   });
 }
@@ -142,15 +95,12 @@ export async function createUser(data: {
   password: string;
   name: string;
   role: string;
-  agencyId: string;
   subAccountId: string;
 }) {
   const user = await getSession();
-  // Only SUPER_ADMIN can create SUPER_ADMIN or AGENCY_ADMIN
+  // Only SUPER_ADMIN can create SUPER_ADMIN users
   if (data.role === "SUPER_ADMIN" && user.role !== "SUPER_ADMIN") throw new Error("Forbidden");
-  if (data.role === "AGENCY_ADMIN" && user.role !== "SUPER_ADMIN") throw new Error("Forbidden");
   if (user.role === "ACCOUNT_ADMIN") throw new Error("Forbidden");
-  if (user.role === "AGENCY_ADMIN" && user.agencyId !== data.agencyId) throw new Error("Forbidden");
 
   const existing = await prisma.user.findUnique({ where: { email: data.email } });
   if (existing) throw new Error("A user with this email already exists");
@@ -162,7 +112,6 @@ export async function createUser(data: {
       passwordHash,
       name: data.name,
       role: data.role,
-      agencyId: data.agencyId,
       subAccountId: data.subAccountId,
     },
   });
@@ -177,7 +126,6 @@ export async function deleteUser(userId: string) {
   const target = await prisma.user.findUnique({ where: { id: userId } });
   if (!target) throw new Error("User not found");
   if (target.role === "SUPER_ADMIN" && user.role !== "SUPER_ADMIN") throw new Error("Forbidden");
-  if (user.role === "AGENCY_ADMIN" && target.agencyId !== user.agencyId) throw new Error("Forbidden");
   if (user.role === "ACCOUNT_ADMIN") throw new Error("Forbidden");
   await prisma.user.delete({ where: { id: userId } });
   revalidatePath("/admin/settings/team");
@@ -205,11 +153,11 @@ export async function getCurrentUser() {
   if (!session?.user) return null;
   const user = session.user as SessionUser;
 
-  // Also fetch the agency branding for white-label
+  // Fetch the sub-account branding for white-label
   let branding = null;
-  if (user.agencyId) {
-    branding = await prisma.agency.findUnique({
-      where: { id: user.agencyId },
+  if (user.subAccountId) {
+    branding = await prisma.subAccount.findUnique({
+      where: { id: user.subAccountId },
       select: {
         brandName: true,
         brandLogo: true,
@@ -222,16 +170,10 @@ export async function getCurrentUser() {
   return { ...user, branding };
 }
 
-export async function getAgencyForUser() {
+export async function getSubAccountForUser() {
   const user = await getSession();
-  if (!user.agencyId) return null;
-  return prisma.agency.findUnique({
-    where: { id: user.agencyId },
-    include: {
-      subAccounts: {
-        include: { _count: { select: { users: true, clients: true } } },
-        orderBy: { createdAt: "asc" },
-      },
-    },
+  if (!user.subAccountId) return null;
+  return prisma.subAccount.findUnique({
+    where: { id: user.subAccountId },
   });
 }

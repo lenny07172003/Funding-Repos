@@ -12,24 +12,14 @@ export async function POST(req: Request) {
   }
 
   try {
-    // Create default agency
-    const agency = await prisma.agency.upsert({
+    // Create default account
+    const subAccount = await prisma.subAccount.upsert({
       where: { slug: "default" },
       update: {},
       create: {
-        name: "Default Agency",
-        slug: "default",
-      },
-    });
-
-    // Create default sub-account
-    const subAccount = await prisma.subAccount.upsert({
-      where: { agencyId_slug: { agencyId: agency.id, slug: "main" } },
-      update: {},
-      create: {
         name: "Main Account",
-        slug: "main",
-        agencyId: agency.id,
+        slug: "default",
+        brandName: "Funding CRM",
       },
     });
 
@@ -43,7 +33,6 @@ export async function POST(req: Request) {
         name: "Admin",
         passwordHash,
         role: "SUPER_ADMIN",
-        agencyId: agency.id,
         subAccountId: subAccount.id,
       },
     });

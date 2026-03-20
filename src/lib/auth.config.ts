@@ -16,9 +16,7 @@ export const authConfig: NextAuthConfig = {
       if (user) {
         token.id = user.id;
         token.role = (user as any).role;
-        token.agencyId = (user as any).agencyId;
         token.subAccountId = (user as any).subAccountId;
-        token.agencyName = (user as any).agencyName;
         token.subAccountName = (user as any).subAccountName;
       }
       return token;
@@ -27,9 +25,7 @@ export const authConfig: NextAuthConfig = {
       if (session.user) {
         (session.user as any).id = token.id as string;
         (session.user as any).role = token.role as string;
-        (session.user as any).agencyId = token.agencyId as string | null;
         (session.user as any).subAccountId = token.subAccountId as string | null;
-        (session.user as any).agencyName = token.agencyName as string | null;
         (session.user as any).subAccountName = token.subAccountName as string | null;
       }
       return session;

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { getUsers, createUser, deleteUser, getAgencyForUser } from "@/lib/actions";
+import { getUsers, createUser, deleteUser } from "@/lib/actions";
 
 export default function TeamPage() {
   const { data: session } = useSession();
@@ -10,38 +10,23 @@ export default function TeamPage() {
 
   const [users, setUsers] = useState<any[]>([]);
   const [showCreate, setShowCreate] = useState(false);
-  const [subAccounts, setSubAccounts] = useState<any[]>([]);
   const [form, setForm] = useState({
     email: "",
     password: "",
     name: "",
     role: "ACCOUNT_ADMIN",
-    subAccountId: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     loadUsers();
-    loadSubAccounts();
   }, []);
 
   async function loadUsers() {
     try {
       const data = await getUsers();
       setUsers(data);
-    } catch {}
-  }
-
-  async function loadSubAccounts() {
-    try {
-      const agency = await getAgencyForUser();
-      if (agency) {
-        setSubAccounts(agency.subAccounts);
-        if (!form.subAccountId && agency.subAccounts.length > 0) {
-          setForm((f) => ({ ...f, subAccountId: agency.subAccounts[0].id }));
-        }
-      }
     } catch {}
   }
 
@@ -53,10 +38,9 @@ export default function TeamPage() {
     try {
       await createUser({
         ...form,
-        agencyId: user?.agencyId || "",
-        subAccountId: form.subAccountId || user?.subAccountId || "",
+        subAccountId: user?.subAccountId || "",
       });
-      setForm({ email: "", password: "", name: "", role: "ACCOUNT_ADMIN", subAccountId: subAccounts[0]?.id || "" });
+      setForm({ email: "", password: "", name: "", role: "ACCOUNT_ADMIN" });
       setShowCreate(false);
       await loadUsers();
     } catch (err: any) {
@@ -75,10 +59,9 @@ export default function TeamPage() {
     }
   }
 
-  const canCreateUsers = user?.role === "SUPER_ADMIN" || user?.role === "AGENCY_ADMIN";
+  const canCreateUsers = user?.role === "SUPER_ADMIN";
   const roleLabels: Record<string, string> = {
     SUPER_ADMIN: "Super Admin",
-    AGENCY_ADMIN: "Agency Admin",
     ACCOUNT_ADMIN: "Admin",
   };
 
@@ -119,25 +102,12 @@ export default function TeamPage() {
             <div>
               <label className="label">Role</label>
               <select className="input-field" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                <option value="ACCOUNT_ADMIN">Account Admin</option>
+                <option value="ACCOUNT_ADMIN">Admin</option>
                 {user?.role === "SUPER_ADMIN" && (
-                  <>
-                    <option value="AGENCY_ADMIN">Agency Admin</option>
-                    <option value="SUPER_ADMIN">Super Admin</option>
-                  </>
+                  <option value="SUPER_ADMIN">Super Admin</option>
                 )}
               </select>
             </div>
-            {subAccounts.length > 1 && (
-              <div>
-                <label className="label">Sub-Account</label>
-                <select className="input-field" value={form.subAccountId} onChange={(e) => setForm({ ...form, subAccountId: e.target.value })}>
-                  {subAccounts.map((a: any) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
           </div>
           <div className="flex gap-3">
             <button type="submit" disabled={loading} className="btn-primary">

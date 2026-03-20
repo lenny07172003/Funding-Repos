@@ -8,9 +8,9 @@ datasource db {
 }
 
 
-// ─── Agency (top-level org — the reseller / white-label owner) ───
+// ─── SubAccount (white-label account — each gets its own isolated CRM) ───
 
-model Agency {
+model SubAccount {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
@@ -24,27 +24,10 @@ model Agency {
   primaryColor String @default("#3b82f6") // hex color
   customDomain String @default("") // e.g. "app.clientsfirm.com"
 
-  subAccounts SubAccount[]
-  users       User[]
-}
-
-// ─── SubAccount (tenant — each gets its own isolated Admin Dashboard) ───
-
-model SubAccount {
-  id        String   @id @default(cuid())
-  agencyId  String
-  name      String
-  slug      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  agency           Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   users            User[]
   clients          Client[]
   lenders          Lender[]
   referralPartners ReferralPartner[]
-
-  @@unique([agencyId, slug])
 }
 
 // ─── User (admin accounts with login credentials) ───
@@ -54,14 +37,12 @@ model User {
   email        String    @unique
   passwordHash String
   name         String
-  role         String    @default("ACCOUNT_ADMIN") // SUPER_ADMIN, AGENCY_ADMIN, ACCOUNT_ADMIN
-  agencyId     String?
+  role         String    @default("ACCOUNT_ADMIN") // SUPER_ADMIN, ACCOUNT_ADMIN
   subAccountId String?
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  agency     Agency?     @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   subAccount SubAccount? @relation(fields: [subAccountId], references: [id], onDelete: Cascade)
 }
 

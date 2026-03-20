@@ -3,10 +3,8 @@ export interface SessionUser {
   id: string;
   email: string;
   name: string;
-  role: "SUPER_ADMIN" | "AGENCY_ADMIN" | "ACCOUNT_ADMIN";
-  agencyId: string | null;
+  role: "SUPER_ADMIN" | "ACCOUNT_ADMIN";
   subAccountId: string | null;
-  agencyName: string | null;
   subAccountName: string | null;
 }
 

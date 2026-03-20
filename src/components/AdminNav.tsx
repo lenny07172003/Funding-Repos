@@ -22,7 +22,6 @@ export default function AdminNav() {
   const user = session?.user as any;
   const role = user?.role;
   const isSuper = role === "SUPER_ADMIN";
-  const isAgencyAdmin = role === "AGENCY_ADMIN";
 
   return (
     <nav className="bg-brand-900 border-b border-brand-800 shadow-sm">
@@ -38,9 +37,6 @@ export default function AdminNav() {
               <span className="text-lg font-bold text-white">
                 {user?.subAccountName || "Admin Dashboard"}
               </span>
-              {user?.agencyName && (
-                <span className="text-xs text-brand-300 block -mt-0.5">{user.agencyName}</span>
-              )}
             </div>
             <span className="sm:hidden text-lg font-bold text-white">Admin</span>
           </Link>
@@ -66,20 +62,6 @@ export default function AdminNav() {
               );
             })}
 
-            {/* Agency admin accounts link */}
-            {isAgencyAdmin && (
-              <Link
-                href="/admin/accounts"
-                className={`px-3 lg:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  pathname.startsWith("/admin/accounts")
-                    ? "bg-brand-700 text-white"
-                    : "text-brand-200 hover:text-white hover:bg-brand-800"
-                }`}
-              >
-                Accounts
-              </Link>
-            )}
-
             {/* User menu */}
             <div className="relative ml-2">
               <button
@@ -100,7 +82,7 @@ export default function AdminNav() {
                     <p className="text-sm font-medium text-gray-900">{user?.name}</p>
                     <p className="text-xs text-gray-500">{user?.email}</p>
                     <span className="inline-block mt-1 px-2 py-0.5 bg-brand-100 text-brand-700 rounded text-xs font-medium">
-                      {role === "SUPER_ADMIN" ? "Super Admin" : role === "AGENCY_ADMIN" ? "Agency Admin" : "Admin"}
+                      {isSuper ? "Super Admin" : "Admin"}
                     </span>
                   </div>
                   <div className="py-1">
@@ -127,7 +109,7 @@ export default function AdminNav() {
                     >
                       Team Members
                     </Link>
-                    {(isSuper || isAgencyAdmin) && (
+                    {isSuper && (
                       <Link
                         href="/admin/settings/branding"
                         onClick={() => setUserMenuOpen(false)}
@@ -197,16 +179,6 @@ export default function AdminNav() {
               </Link>
             );
           })}
-
-          {isAgencyAdmin && (
-            <Link
-              href="/admin/accounts"
-              onClick={() => setMobileOpen(false)}
-              className="block px-4 py-3 rounded-lg text-sm font-medium text-brand-200 hover:text-white hover:bg-brand-800"
-            >
-              Accounts
-            </Link>
-          )}
 
           <div className="border-t border-brand-800 pt-3 mt-3 space-y-1">
             <div className="px-4 py-2">
