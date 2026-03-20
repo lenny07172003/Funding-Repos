@@ -66,17 +66,17 @@ export default function AdminNav() {
               );
             })}
 
-            {/* Agency/Super admin links */}
-            {(isSuper || isAgencyAdmin) && (
+            {/* Agency admin accounts link */}
+            {isAgencyAdmin && (
               <Link
-                href={isSuper ? "/admin/agencies" : "/admin/accounts"}
+                href="/admin/accounts"
                 className={`px-3 lg:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  pathname.startsWith("/admin/agencies") || pathname.startsWith("/admin/accounts")
+                  pathname.startsWith("/admin/accounts")
                     ? "bg-brand-700 text-white"
                     : "text-brand-200 hover:text-white hover:bg-brand-800"
                 }`}
               >
-                {isSuper ? "Agencies" : "Accounts"}
+                Accounts
               </Link>
             )}
 
@@ -104,6 +104,15 @@ export default function AdminNav() {
                     </span>
                   </div>
                   <div className="py-1">
+                    {isSuper && (
+                      <Link
+                        href="/admin/agencies"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Whitelabel
+                      </Link>
+                    )}
                     <Link
                       href="/admin/settings"
                       onClick={() => setUserMenuOpen(false)}
@@ -189,13 +198,13 @@ export default function AdminNav() {
             );
           })}
 
-          {(isSuper || isAgencyAdmin) && (
+          {isAgencyAdmin && (
             <Link
-              href={isSuper ? "/admin/agencies" : "/admin/accounts"}
+              href="/admin/accounts"
               onClick={() => setMobileOpen(false)}
               className="block px-4 py-3 rounded-lg text-sm font-medium text-brand-200 hover:text-white hover:bg-brand-800"
             >
-              {isSuper ? "Agencies" : "Accounts"}
+              Accounts
             </Link>
           )}
 
@@ -204,6 +213,11 @@ export default function AdminNav() {
               <p className="text-sm font-medium text-white">{user?.name}</p>
               <p className="text-xs text-brand-300">{user?.email}</p>
             </div>
+            {isSuper && (
+              <Link href="/admin/agencies" onClick={() => setMobileOpen(false)} className="block px-4 py-2 text-sm text-brand-200 hover:text-white">
+                Whitelabel
+              </Link>
+            )}
             <Link href="/admin/settings" onClick={() => setMobileOpen(false)} className="block px-4 py-2 text-sm text-brand-200 hover:text-white">
               Settings
             </Link>
