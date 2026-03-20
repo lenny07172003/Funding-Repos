@@ -10,7 +10,7 @@ export default auth((req) => {
   const user = req.auth?.user as any;
 
   // Public routes — always accessible
-  const publicPaths = ["/login", "/api/auth", "/onboard"];
+  const publicPaths = ["/login", "/api/auth", "/api/seed", "/onboard"];
   if (publicPaths.some((p) => pathname.startsWith(p))) {
     // Redirect logged-in users away from login page
     if (pathname === "/login" && isLoggedIn) {
