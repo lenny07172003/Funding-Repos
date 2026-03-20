@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
+import { authConfig } from "./auth.config";
 
 // Rate limiting store (in-memory, per-process)
 const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
@@ -35,13 +36,7 @@ function clearAttempts(email: string) {
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  pages: {
-    signIn: "/login",
-  },
-  session: {
-    strategy: "jwt",
-    maxAge: 24 * 60 * 60, // 24 hours
-  },
+  ...authConfig,
   providers: [
     Credentials({
       name: "credentials",
@@ -97,28 +92,4 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       },
     }),
   ],
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-        token.role = (user as any).role;
-        token.agencyId = (user as any).agencyId;
-        token.subAccountId = (user as any).subAccountId;
-        token.agencyName = (user as any).agencyName;
-        token.subAccountName = (user as any).subAccountName;
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      if (session.user) {
-        (session.user as any).id = token.id as string;
-        (session.user as any).role = token.role as string;
-        (session.user as any).agencyId = token.agencyId as string | null;
-        (session.user as any).subAccountId = token.subAccountId as string | null;
-        (session.user as any).agencyName = token.agencyName as string | null;
-        (session.user as any).subAccountName = token.subAccountName as string | null;
-      }
-      return session;
-    },
-  },
 });
