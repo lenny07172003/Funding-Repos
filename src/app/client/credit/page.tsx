@@ -1,18 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { getMyCreditProfile } from "@/lib/client-portal-actions";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
-interface BureauScore {
-  bureau: string;
+interface BureauData {
   score: number | null;
   accounts: number | null;
   creditAge: string;
-  derogatory: number | null;
-  highestLimit: number | null;
+  derogatoryAccounts: number | null;
+  highestCreditLimit: number | null;
   inquiries: number | null;
 }
-
-const STORAGE_KEY = "funding_crm_client_credit";
 
 function ScoreGauge({ score }: { score: number | null }) {
   if (!score) {
@@ -35,20 +34,33 @@ function ScoreGauge({ score }: { score: number | null }) {
 }
 
 export default function CreditPage() {
-  const [bureaus, setBureaus] = useState<BureauScore[]>([
-    { bureau: "Experian", score: null, accounts: null, creditAge: "", derogatory: null, highestLimit: null, inquiries: null },
-    { bureau: "Equifax", score: null, accounts: null, creditAge: "", derogatory: null, highestLimit: null, inquiries: null },
-    { bureau: "TransUnion", score: null, accounts: null, creditAge: "", derogatory: null, highestLimit: null, inquiries: null },
-  ]);
+  const [creditProfile, setCreditProfile] = useState<Record<string, BureauData> | null>(null);
+  const [monitoringStatus, setMonitoringStatus] = useState("");
+  const [monitoringProvider, setMonitoringProvider] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
+    async function load() {
       try {
-        setBureaus(JSON.parse(raw));
-      } catch {}
+        const data = await getMyCreditProfile();
+        setCreditProfile(data.creditProfile);
+        setMonitoringStatus(data.monitoringStatus);
+        setMonitoringProvider(data.monitoringProvider);
+      } catch {
+        // Credit profile load failed
+      }
+      setLoading(false);
     }
+    load();
   }, []);
+
+  if (loading) return <LoadingSpinner message="Loading credit data..." />;
+
+  const bureaus = [
+    { key: "experian", label: "Experian" },
+    { key: "equifax", label: "Equifax" },
+    { key: "transUnion", label: "TransUnion" },
+  ];
 
   return (
     <div className="space-y-8">
@@ -61,61 +73,62 @@ export default function CreditPage() {
       <div className="card p-6">
         <h2 className="text-lg font-semibold text-brand-900 mb-6">Credit Scores</h2>
         <div className="flex flex-wrap justify-center gap-6 sm:gap-12">
-          {bureaus.map((b) => (
-            <div key={b.bureau} className="text-center">
-              <ScoreGauge score={b.score} />
-              <p className="mt-2 font-medium text-gray-700">{b.bureau}</p>
-            </div>
-          ))}
+          {bureaus.map((b) => {
+            const data = creditProfile?.[b.key] as BureauData | undefined;
+            return (
+              <div key={b.key} className="text-center">
+                <ScoreGauge score={data?.score ?? null} />
+                <p className="mt-2 font-medium text-gray-700">{b.label}</p>
+              </div>
+            );
+          })}
         </div>
       </div>
 
       {/* Detailed Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {bureaus.map((b) => (
-          <div key={b.bureau} className="card p-6">
-            <h3 className="font-semibold text-brand-800 text-lg mb-4 border-b border-gray-100 pb-2">{b.bureau}</h3>
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-500">Score</span>
-                <span className="font-semibold text-gray-900">{b.score ?? "—"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-500">Total Accounts</span>
-                <span className="font-semibold text-gray-900">{b.accounts ?? "—"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-500">Credit Age</span>
-                <span className="font-semibold text-gray-900">{b.creditAge || "—"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-500">Derogatory Accounts</span>
-                <span className={`font-semibold ${(b.derogatory ?? 0) > 0 ? "text-red-600" : "text-gray-900"}`}>
-                  {b.derogatory ?? "—"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-500">Highest Credit Limit</span>
-                <span className="font-semibold text-gray-900">
-                  {b.highestLimit ? `$${b.highestLimit.toLocaleString()}` : "—"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-500">Inquiries</span>
-                <span className={`font-semibold ${(b.inquiries ?? 0) > 5 ? "text-amber-600" : "text-gray-900"}`}>
-                  {b.inquiries ?? "—"}
-                </span>
+        {bureaus.map((b) => {
+          const data = creditProfile?.[b.key] as BureauData | undefined;
+          return (
+            <div key={b.key} className="card p-6">
+              <h3 className="font-semibold text-brand-800 text-lg mb-4 border-b border-gray-100 pb-2">{b.label}</h3>
+              <div className="space-y-3">
+                <Row label="Score" value={data?.score ?? null} />
+                <Row label="Total Accounts" value={data?.accounts ?? null} />
+                <Row label="Credit Age" value={data?.creditAge || null} />
+                <Row label="Derogatory Accounts" value={data?.derogatoryAccounts ?? null} warn={(data?.derogatoryAccounts ?? 0) > 0} />
+                <Row label="Highest Credit Limit" value={data?.highestCreditLimit ? `$${data.highestCreditLimit.toLocaleString()}` : null} />
+                <Row label="Inquiries" value={data?.inquiries ?? null} warn={(data?.inquiries ?? 0) > 5} />
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      {monitoringStatus && (
+        <div className="card p-4 bg-brand-50 border-brand-200">
+          <p className="text-sm text-brand-700">
+            <strong>Credit Monitoring:</strong> {monitoringStatus === "active" ? "Active" : "Pending"}{monitoringProvider ? ` via ${monitoringProvider}` : ""}
+          </p>
+        </div>
+      )}
 
       <div className="card p-4 bg-brand-50 border-brand-200">
         <p className="text-sm text-brand-700">
           <strong>Note:</strong> Your credit data is managed by your funding team. If you see incorrect data, please contact your representative.
         </p>
       </div>
+    </div>
+  );
+}
+
+function Row({ label, value, warn }: { label: string; value: string | number | null; warn?: boolean }) {
+  return (
+    <div className="flex justify-between">
+      <span className="text-sm text-gray-500">{label}</span>
+      <span className={`font-semibold ${warn ? "text-red-600" : "text-gray-900"}`}>
+        {value !== null && value !== undefined ? String(value) : "—"}
+      </span>
     </div>
   );
 }

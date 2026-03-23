@@ -8,7 +8,7 @@ datasource db {
 }
 
 
-// ─── Agency (top-level org — the reseller / white-label owner) ───
+// ─── Agency (top-level org — the paying SaaS customer) ───
 
 model Agency {
   id        String   @id @default(cuid())
@@ -23,6 +23,29 @@ model Agency {
   brandFavicon String @default("")
   primaryColor String @default("#3b82f6") // hex color
   customDomain String @default("") // e.g. "app.clientsfirm.com"
+
+  // Subscription & billing
+  plan               String  @default("tier_1") // tier_1, tier_2, tier_3
+  subscriptionStatus String  @default("trialing") // trialing, active, past_due, canceled, suspended
+  billingEmail       String  @default("")
+  billingProcessorId String  @default("") // External processor customer ID (Soar, TailoredPay, etc.)
+  subscriptionId     String  @default("") // External subscription ID
+  trialEndsAt        String? // ISO date — when trial expires
+  currentPeriodEnd   String? // ISO date — when current billing period ends
+
+  // Plan limits
+  maxSubAccounts     Int     @default(3) // Tier 1: 3, Tier 2+: unlimited (-1)
+  maxClients         Int     @default(500) // Tier 1: 500, Tier 2: 750, Tier 3: unlimited (-1)
+  maxUsers           Int     @default(-1) // -1 = unlimited (all tiers)
+  canResellSubAccounts Boolean @default(false) // Tier 2+ only
+
+  // AI credits
+  aiCreditsBalance   Int     @default(0) // Prepaid AI analysis credits
+  aiCreditsUsed      Int     @default(0) // Total credits consumed
+
+  // Outreach credits (for Banker Outreach Agent)
+  outreachCreditsBalance Int @default(0)
+  outreachCreditsUsed    Int @default(0)
 
   subAccounts SubAccount[]
   users       User[]
@@ -43,6 +66,9 @@ model SubAccount {
   clients          Client[]
   lenders          Lender[]
   referralPartners ReferralPartner[]
+  creditRepairReferrals CreditRepairReferral[]
+  bankerProspects  BankerProspect[]
+  outreachCampaigns OutreachCampaign[]
 
   @@unique([agencyId, slug])
 }
@@ -54,15 +80,17 @@ model User {
   email        String    @unique
   passwordHash String
   name         String
-  role         String    @default("ACCOUNT_ADMIN") // SUPER_ADMIN, AGENCY_ADMIN, ACCOUNT_ADMIN
+  role         String    @default("ACCOUNT_ADMIN") // PLATFORM_OWNER, SUPER_ADMIN, AGENCY_ADMIN, ACCOUNT_ADMIN, CLIENT
   agencyId     String?
   subAccountId String?
+  clientId     String?   @unique // Links CLIENT role users to their Client record
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   agency     Agency?     @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   subAccount SubAccount? @relation(fields: [subAccountId], references: [id], onDelete: Cascade)
+  client     Client?     @relation(fields: [clientId], references: [id], onDelete: Cascade)
 }
 
 // ─── Client (CRM client record — scoped to sub-account) ───
@@ -130,6 +158,9 @@ model Client {
   fundingApplications FundingApplication[]
   documents           Document[]
   activityLog         ActivityEntry[]
+  userAccount         User?                // Login account for this client (CLIENT role)
+  fundingAnalyses     FundingAnalysis[]
+  creditRepairReferrals CreditRepairReferral[]
 }
 
 // ─── FundingApplication ───
@@ -240,4 +271,225 @@ model ReferralPartner {
   subAccount SubAccount @relation(fields: [subAccountId], references: [id], onDelete: Cascade)
 
   @@unique([subAccountId, name])
+}
+
+// ─── Banker Prospect (sourced bankers for relationship building) ───
+
+model BankerProspect {
+  id           String @id @default(cuid())
+  subAccountId String
+
+  // Contact info
+  firstName     String @default("")
+  lastName      String @default("")
+  email         String @default("")
+  phone         String @default("")
+  linkedinUrl   String @default("")
+
+  // Bank info
+  bankName      String @default("")
+  branchLocation String @default("")
+  title         String @default("") // "VP Commercial Lending", "Branch Manager", etc.
+  department    String @default("") // "Commercial Lending", "SBA", "Business Banking"
+
+  // Products they handle
+  lendingProducts String @default("[]") // JSON array: ["sba", "term_loan", "line_of_credit", etc.]
+  specialties     String @default("") // "SBA preferred lender", "startup-friendly", etc.
+
+  // Relationship pipeline
+  status        String @default("prospect") // prospect, contacted, replied, meeting_scheduled, meeting_completed, partner, declined
+  warmth        String @default("cold") // cold, warm, hot
+  source        String @default("manual") // manual, fdic, linkedin, referral, sba_directory
+
+  // Notes & context
+  notes         String @default("")
+  lastContactedAt String?
+  nextFollowUpAt  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subAccount       SubAccount        @relation(fields: [subAccountId], references: [id], onDelete: Cascade)
+  outreachMessages OutreachMessage[]
+}
+
+// ─── Outreach Campaign ───
+
+model OutreachCampaign {
+  id           String @id @default(cuid())
+  subAccountId String
+
+  name         String @default("")
+  status       String @default("draft") // draft, active, paused, completed
+  channel      String @default("email") // email, linkedin, both
+
+  // AI message configuration
+  messageTemplate String @default("") // Base template for AI to personalize
+  followUpDays    String @default("[3,7,14]") // JSON array of days between follow-ups
+  maxFollowUps    Int    @default(3)
+  tone            String @default("professional") // professional, casual, direct
+
+  // Targeting
+  targetTitle     String @default("") // Filter by banker title
+  targetProducts  String @default("") // Filter by lending products
+  targetRegion    String @default("") // Filter by location
+
+  // Stats
+  totalSent       Int @default(0)
+  totalOpened     Int @default(0)
+  totalReplied    Int @default(0)
+  totalMeetings   Int @default(0)
+
+  creditsUsed     Int @default(0) // Outreach credits consumed
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subAccount SubAccount @relation(fields: [subAccountId], references: [id], onDelete: Cascade)
+  messages   OutreachMessage[]
+}
+
+// ─── Outreach Message (individual messages sent to bankers) ───
+
+model OutreachMessage {
+  id         String @id @default(cuid())
+  campaignId String
+  prospectId String
+
+  channel    String @default("email") // email, linkedin
+  subject    String @default("")
+  body       String @default("") // AI-generated personalized message
+  sequenceStep Int @default(1) // 1 = initial, 2 = first follow-up, etc.
+
+  // Status
+  status     String @default("pending") // pending, sent, delivered, opened, replied, bounced
+  sentAt     String?
+  openedAt   String?
+  repliedAt  String?
+
+  // Reply content (if they responded)
+  replyContent String @default("")
+
+  createdAt DateTime @default(now())
+
+  campaign OutreachCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  prospect BankerProspect   @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+}
+
+// ─── Stacking Card Database (credit card products for stacking engine) ───
+
+model StackingCard {
+  id String @id @default(cuid())
+
+  // Card identity
+  cardName       String // "Chase Ink Unlimited"
+  bankName       String // "Chase"
+  bureau         String // "experian", "equifax", "transunion"
+  pullType       String @default("hard") // "hard", "soft", "soft_initial"
+
+  // Sequencing
+  sequenceGroup  String @default("") // Cards in same group can be applied together (color-coded groups)
+  applyAlone     Boolean @default(false) // Must be applied by itself
+  stackingOrder  Int @default(0) // Priority order within bureau
+  waitDaysAfter  Int @default(0) // Days to wait after this card before next application
+
+  // Requirements
+  requiresRelationship  Boolean @default(false) // Must have bank relationship first
+  relationshipNotes     String @default("") // How to build the relationship
+  minBusinessAge        String @default("") // "2 years", "new ok", etc.
+  requiresInBranch      Boolean @default(false) // Must apply in branch
+  requiresTaxReturns    Boolean @default(false)
+  requiresBankStatements Boolean @default(false)
+  documentationType     String @default("stated") // "stated", "documented", "non_doc"
+
+  // Sweet numbers (ideal application numbers)
+  sweetBizRevenueMin    Float? // Minimum business revenue for sweet spot
+  sweetBizRevenueMax    Float? // Maximum business revenue for sweet spot
+  sweetPersonalIncomeMin Float? // Minimum personal income
+  sweetPersonalIncomeMax Float? // Maximum personal income
+  sweetMonthlySpend     Float? // Monthly spend if relevant
+  sweetSavings          Float? // Savings amount if relevant
+  sweetInvestments      Float? // Investment amount if relevant
+
+  // Card details
+  hasZeroApr     Boolean @default(false)
+  zeroAprMonths  Int @default(0) // 0, 12, 18, etc.
+  typicalLimitMin Float? // Typical minimum limit
+  typicalLimitMax Float? // Typical maximum limit
+  reportsToPersonal Boolean @default(false) // Does it report to personal credit?
+
+  // Products available at same bank
+  alsoOffers     String @default("") // "line_of_credit", "credit_card", etc.
+  maxExposure    Float? // Max non-doc exposure at this bank
+
+  // Hacks & tips
+  hacks          String @default("") // Special tricks, e.g. "FREEZE TRANSUNION"
+  applicationUrl String @default("") // Direct application link
+  notes          String @default("") // Additional context
+
+  // Status
+  isActive       Boolean @default(true)
+  lastVerified   String @default("") // Date last verified
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Funding Analysis (AI-generated funding blueprints) ───
+
+model FundingAnalysis {
+  id       String @id @default(cuid())
+  clientId String
+
+  type     String // "credit_based" or "revenue_based"
+  status   String @default("pending") // pending, analyzing, completed, error
+
+  // Input snapshot (frozen at analysis time)
+  inputSnapshot String @default("{}") // JSON: credit scores, revenue, business data
+
+  // AI-generated results
+  summary          String @default("") // Executive summary
+  phases           String @default("[]") // JSON array of funding phases
+  totalProjected   Float  @default(0) // Total projected funding amount
+  recommendedFirst String @default("") // First recommended action
+  riskFactors      String @default("[]") // JSON array of risk factors
+  improvements     String @default("[]") // JSON array of suggested improvements
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+// ─── Credit Repair Referral (commission tracking + calendar booking) ───
+
+model CreditRepairReferral {
+  id           String @id @default(cuid())
+  subAccountId String
+  clientId     String
+
+  // Client info snapshot
+  clientName  String @default("")
+  clientEmail String @default("")
+  clientPhone String @default("")
+
+  // Referral status
+  status     String @default("pending") // pending, booked, enrolled, paid, declined
+  bookingDate String? // Scheduled call date
+  bookingTime String? // Scheduled call time
+  salesRepName String @default("") // Assigned sales rep
+
+  // Commission tracking
+  commissionAmount Float   @default(100) // Default $100 per referral
+  commissionStatus String  @default("unpaid") // unpaid, pending, paid
+  commissionPaidAt String?
+
+  // Notes
+  notes String @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subAccount SubAccount @relation(fields: [subAccountId], references: [id], onDelete: Cascade)
+  client     Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
 }

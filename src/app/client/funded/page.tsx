@@ -1,51 +1,53 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { getMyFundingApplications, getMyFundingSummary } from "@/lib/client-portal-actions";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
-interface FundingItem {
-  id: string;
-  type: string;
-  lender: string;
-  product: string;
-  amount: number | null;
-  status: "pending" | "applied" | "approved" | "funded" | "denied";
-  appliedDate: string;
-  fundedDate: string | null;
-}
+type FundingApp = Awaited<ReturnType<typeof getMyFundingApplications>>[number];
 
-const STORAGE_KEY = "funding_crm_client_funded";
+const typeLabels: Record<string, string> = {
+  credit_card: "Business Credit Card",
+  line_of_credit: "Line of Credit",
+  term_loan: "Term Loan",
+  mca: "MCA",
+  equipment_financing: "Equipment Financing",
+  sba: "SBA Loan",
+};
+
+const statusColors: Record<string, string> = {
+  pending: "badge-yellow",
+  applied: "badge-blue",
+  approved: "badge-green",
+  funded: "bg-emerald-600 text-white badge",
+  denied: "badge-red",
+};
 
 export default function FundedPage() {
-  const [items, setItems] = useState<FundingItem[]>([]);
+  const [items, setItems] = useState<FundingApp[]>([]);
+  const [summary, setSummary] = useState({ totalFunded: 0, totalApproved: 0 });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
+    async function load() {
       try {
-        setItems(JSON.parse(raw));
-      } catch {}
+        const [apps, totals] = await Promise.all([
+          getMyFundingApplications(),
+          getMyFundingSummary(),
+        ]);
+        setItems(apps);
+        setSummary(totals);
+      } catch {
+        // Funding data load failed
+      }
+      setLoading(false);
     }
+    load();
   }, []);
 
-  const totalApproved = items.filter((i) => i.status === "approved" || i.status === "funded").reduce((sum, i) => sum + (i.amount || 0), 0);
-  const totalFunded = items.filter((i) => i.status === "funded").reduce((sum, i) => sum + (i.amount || 0), 0);
+  if (loading) return <LoadingSpinner message="Loading funding data..." />;
+
   const pendingCount = items.filter((i) => i.status === "pending" || i.status === "applied").length;
-
-  const statusColors: Record<string, string> = {
-    pending: "badge-yellow",
-    applied: "badge-blue",
-    approved: "badge-green",
-    funded: "bg-emerald-600 text-white badge",
-    denied: "badge-red",
-  };
-
-  const typeLabels: Record<string, string> = {
-    credit_card: "Business Credit Card",
-    line_of_credit: "Line of Credit",
-    term_loan: "Term Loan",
-    mca: "MCA",
-    equipment_financing: "Equipment Financing",
-  };
 
   return (
     <div className="space-y-8">
@@ -58,11 +60,11 @@ export default function FundedPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="stat-card">
           <p className="text-sm text-gray-500 mb-1">Total Approved</p>
-          <p className="text-3xl font-bold text-brand-700">${totalApproved.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-brand-700">${summary.totalApproved.toLocaleString()}</p>
         </div>
         <div className="stat-card">
           <p className="text-sm text-gray-500 mb-1">Total Funded</p>
-          <p className="text-3xl font-bold text-emerald-600">${totalFunded.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-emerald-600">${summary.totalFunded.toLocaleString()}</p>
         </div>
         <div className="stat-card">
           <p className="text-sm text-gray-500 mb-1">Pending Applications</p>

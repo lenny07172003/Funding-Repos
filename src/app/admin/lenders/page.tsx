@@ -1,8 +1,55 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Lender, ApplicationType } from "@/lib/types";
-import { getLenders, upsertLender, deleteLender, createEmptyLender, syncLendersFromClients } from "@/lib/store";
+import { getLenders, createLender, updateLender, deleteLenderById, syncLendersFromClients } from "@/lib/client-actions";
+
+type ApplicationType = "credit_card" | "line_of_credit" | "term_loan" | "mca" | "equipment_financing" | "sba";
+
+type Lender = Awaited<ReturnType<typeof getLenders>>[number] & {
+  /** Parsed from JSON string for UI use */
+  _products: ApplicationType[];
+};
+
+function parseLender(raw: Awaited<ReturnType<typeof getLenders>>[number]): Lender {
+  let products: ApplicationType[] = [];
+  try {
+    products = JSON.parse(raw.supportedProducts || "[]");
+  } catch { products = []; }
+  return { ...raw, _products: products };
+}
+
+function emptyLender(): Partial<Lender> & { _products: ApplicationType[] } {
+  return {
+    id: "",
+    name: "",
+    logo: "",
+    description: "",
+    website: "",
+    apiKey: "",
+    apiEndpoint: "",
+    apiSecret: "",
+    status: "disconnected",
+    _products: [],
+    supportedProducts: "[]",
+    minCreditScore: null,
+    maxLoanAmount: null,
+    minLoanAmount: null,
+    interestRateRange: "",
+    termRange: "",
+    avgApprovalTime: "",
+    totalFunded: 0,
+    totalDeals: 0,
+    approvalRate: null,
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
+    notes: "",
+    connectedAt: null,
+    lastSyncAt: null,
+    webhookUrl: "",
+    sandboxMode: true,
+  };
+}
 
 const PRODUCT_OPTIONS: { value: ApplicationType; label: string }[] = [
   { value: "credit_card", label: "Credit Cards" },
@@ -43,17 +90,21 @@ export default function LenderMarketplace() {
   const [testing, setTesting] = useState(false);
 
   useEffect(() => {
-    // Clean up: only keep lenders actually used in client applications or manually configured
-    syncLendersFromClients();
-    setLenders(getLenders());
+    async function load() {
+      await syncLendersFromClients();
+      const data = await getLenders();
+      setLenders(data.map(parseLender));
+    }
+    load();
   }, []);
 
-  function reload() {
-    setLenders(getLenders());
+  async function reload() {
+    const data = await getLenders();
+    setLenders(data.map(parseLender));
   }
 
   function openAdd() {
-    setEditingLender(createEmptyLender());
+    setEditingLender(emptyLender() as Lender);
     setView("add");
     setTestResult(null);
   }
@@ -64,51 +115,73 @@ export default function LenderMarketplace() {
     setTestResult(null);
   }
 
-  function goBack() {
+  async function goBack() {
     setView("marketplace");
     setEditingLender(null);
     setTestResult(null);
-    reload();
+    await reload();
   }
 
-  function saveLender() {
+  async function saveLender() {
     if (!editingLender) return;
-    upsertLender(editingLender);
+    const productsJson = JSON.stringify(editingLender._products);
+    if (editingLender.id) {
+      await updateLender(editingLender.id, {
+        ...editingLender,
+        supportedProducts: productsJson,
+      });
+    } else {
+      const created = await createLender({ name: editingLender.name, logo: editingLender.logo, description: editingLender.description, website: editingLender.website });
+      // After creating, update with all fields
+      await updateLender(created.id, {
+        ...editingLender,
+        supportedProducts: productsJson,
+      });
+      setEditingLender({ ...editingLender, id: created.id } as Lender);
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
-    reload();
+    await reload();
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     if (!confirm("Remove this lender connection?")) return;
-    deleteLender(id);
-    goBack();
+    await deleteLenderById(id);
+    await goBack();
   }
 
-  function connectLender() {
+  async function connectLender() {
     if (!editingLender || !editingLender.apiKey) return;
     const updated = {
       ...editingLender,
-      status: "connected" as const,
+      status: "connected",
       connectedAt: new Date().toISOString(),
       lastSyncAt: new Date().toISOString(),
     };
-    setEditingLender(updated);
-    upsertLender(updated);
+    setEditingLender(updated as Lender);
+    if (editingLender.id) {
+      await updateLender(editingLender.id, {
+        status: "connected",
+        connectedAt: new Date().toISOString(),
+        lastSyncAt: new Date().toISOString(),
+      });
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
-    reload();
+    await reload();
   }
 
-  function disconnectLender() {
+  async function disconnectLender() {
     if (!editingLender) return;
     const updated = {
       ...editingLender,
-      status: "disconnected" as const,
+      status: "disconnected",
     };
-    setEditingLender(updated);
-    upsertLender(updated);
-    reload();
+    setEditingLender(updated as Lender);
+    if (editingLender.id) {
+      await updateLender(editingLender.id, { status: "disconnected" });
+    }
+    await reload();
   }
 
   function testConnection() {
@@ -135,11 +208,11 @@ export default function LenderMarketplace() {
 
   function toggleProduct(product: ApplicationType) {
     if (!editingLender) return;
-    const current = editingLender.supportedProducts;
+    const current = editingLender._products;
     const updated = current.includes(product)
       ? current.filter((p) => p !== product)
       : [...current, product];
-    setEditingLender({ ...editingLender, supportedProducts: updated });
+    setEditingLender({ ...editingLender, _products: updated });
   }
 
   function updateField<K extends keyof Lender>(field: K, value: Lender[K]) {
@@ -151,7 +224,7 @@ export default function LenderMarketplace() {
   const filtered = lenders.filter((l) => {
     if (search && !l.name.toLowerCase().includes(search.toLowerCase())) return false;
     if (filterStatus !== "all" && l.status !== filterStatus) return false;
-    if (filterProduct !== "all" && !l.supportedProducts.includes(filterProduct as ApplicationType))
+    if (filterProduct !== "all" && !l._products.includes(filterProduct as ApplicationType))
       return false;
     return true;
   });
@@ -315,9 +388,9 @@ export default function LenderMarketplace() {
                   )}
 
                   {/* Supported Products */}
-                  {lender.supportedProducts.length > 0 && (
+                  {lender._products.length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-3">
-                      {lender.supportedProducts.map((p) => {
+                      {lender._products.map((p) => {
                         const label = PRODUCT_OPTIONS.find((po) => po.value === p)?.label || p;
                         return (
                           <span
@@ -684,7 +757,7 @@ export default function LenderMarketplace() {
           <p className="text-sm text-gray-500 mb-3">Select the funding types this lender supports</p>
           <div className="grid grid-cols-2 gap-2">
             {PRODUCT_OPTIONS.map((p) => {
-              const selected = editingLender.supportedProducts.includes(p.value);
+              const selected = editingLender._products.includes(p.value);
               return (
                 <button
                   key={p.value}

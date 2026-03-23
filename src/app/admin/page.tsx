@@ -2,8 +2,26 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { getClients, syncLendersFromClients } from "@/lib/store";
-import { Client, FundingApplication } from "@/lib/types";
+import { getClients, syncLendersFromClients } from "@/lib/client-actions";
+
+type FundingApplication = {
+  id: string;
+  type: string;
+  lender: string;
+  product: string;
+  amount: number | null;
+  status: string;
+  appliedDate: string;
+  approvedDate: string | null;
+  fundedDate: string | null;
+  notes: string;
+  sortOrder: number;
+};
+
+type ClientWithApps = {
+  id: string;
+  fundingApplications: FundingApplication[];
+};
 
 type TimeFilter = "all" | "year" | "quarter" | "month" | "week" | "day";
 
@@ -62,7 +80,7 @@ function filterApplications(
   });
 }
 
-function getFundedApps(clients: Client[]): FundingApplication[] {
+function getFundedApps(clients: ClientWithApps[]): FundingApplication[] {
   return clients.flatMap((c) =>
     c.fundingApplications.filter((a) => a.status === "funded")
   );
@@ -89,16 +107,20 @@ function avgDaysToFund(apps: FundingApplication[]): number | null {
 }
 
 export default function AdminDashboard() {
-  const [clients, setClients] = useState<Client[]>([]);
+  const [clients, setClients] = useState<ClientWithApps[]>([]);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
   const [customDate, setCustomDate] = useState("");
   const [showCalendar, setShowCalendar] = useState(false);
   const calRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setClients(getClients());
-    // Sync lender marketplace: remove unused lenders, add any missing from applications
-    syncLendersFromClients();
+    async function load() {
+      const data = await getClients();
+      setClients(data);
+      // Sync lender marketplace: remove unused lenders, add any missing from applications
+      await syncLendersFromClients();
+    }
+    load();
   }, []);
 
   useEffect(() => {

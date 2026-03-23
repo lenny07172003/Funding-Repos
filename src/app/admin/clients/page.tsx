@@ -3,12 +3,13 @@
 import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Client } from "@/lib/types";
-import { getClients, deleteClient, getReferralPartners, saveReferralPartners } from "@/lib/store";
+import { getClients, deleteClientById, getReferralPartners, addReferralPartner, removeReferralPartner } from "@/lib/client-actions";
+
+type ClientRow = Awaited<ReturnType<typeof getClients>>[number];
 
 function AdminClientsPageInner() {
   const searchParams = useSearchParams();
-  const [clients, setClients] = useState<Client[]>([]);
+  const [clients, setClients] = useState<ClientRow[]>([]);
   const [search, setSearch] = useState("");
   const [referralFilter, setReferralFilter] = useState("all");
   const [appStatusFilter, setAppStatusFilter] = useState(searchParams.get("appStatus") || "all");
@@ -18,14 +19,19 @@ function AdminClientsPageInner() {
   const [newPartnerName, setNewPartnerName] = useState("");
 
   useEffect(() => {
-    setClients(getClients());
-    setSavedPartners(getReferralPartners());
+    async function load() {
+      const [data, partners] = await Promise.all([getClients(), getReferralPartners()]);
+      setClients(data);
+      setSavedPartners(partners);
+    }
+    load();
   }, []);
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     if (confirm("Are you sure you want to remove this client?")) {
-      deleteClient(id);
-      setClients(getClients());
+      await deleteClientById(id);
+      const data = await getClients();
+      setClients(data);
     }
   }
 
@@ -35,29 +41,29 @@ function AdminClientsPageInner() {
     new Set([...savedPartners, ...clientPartners])
   ).sort();
 
-  function addPartner() {
+  async function handleAddPartner() {
     const name = newPartnerName.trim();
     if (!name || savedPartners.includes(name)) return;
+    await addReferralPartner(name);
     const updated = [...savedPartners, name].sort();
     setSavedPartners(updated);
-    saveReferralPartners(updated);
     setNewPartnerName("");
   }
 
-  function removePartner(name: string) {
+  async function handleRemovePartner(name: string) {
+    await removeReferralPartner(name);
     const updated = savedPartners.filter((p) => p !== name);
     setSavedPartners(updated);
-    saveReferralPartners(updated);
     if (referralFilter === name) setReferralFilter("all");
   }
 
   const filtered = clients.filter((c) => {
     const q = search.toLowerCase();
     const matchesSearch =
-      c.personalInfo.firstName.toLowerCase().includes(q) ||
-      c.personalInfo.lastName.toLowerCase().includes(q) ||
-      c.personalInfo.email.toLowerCase().includes(q) ||
-      c.businessInfo.businessName.toLowerCase().includes(q) ||
+      c.firstName.toLowerCase().includes(q) ||
+      c.lastName.toLowerCase().includes(q) ||
+      c.email.toLowerCase().includes(q) ||
+      c.businessName.toLowerCase().includes(q) ||
       (c.referralPartner || "").toLowerCase().includes(q);
     const matchesReferral =
       referralFilter === "all" ||
@@ -83,18 +89,18 @@ function AdminClientsPageInner() {
     active: "Active",
   };
 
-  function renderClientRow(client: Client) {
+  function renderClientRow(client: ClientRow) {
     return (
       <tr key={client.id} className="hover:bg-gray-50">
         <td className="table-cell">
           <div>
             <div className="font-medium text-gray-900">
-              {client.personalInfo.firstName} {client.personalInfo.lastName}
+              {client.firstName} {client.lastName}
             </div>
-            <div className="text-xs text-gray-500">{client.personalInfo.email}</div>
+            <div className="text-xs text-gray-500">{client.email}</div>
           </div>
         </td>
-        <td className="table-cell">{client.businessInfo.businessName || "—"}</td>
+        <td className="table-cell">{client.businessName || "—"}</td>
         <td className="table-cell">
           {client.referralPartner ? (
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
@@ -239,10 +245,10 @@ function AdminClientsPageInner() {
               placeholder="Enter referral partner name..."
               value={newPartnerName}
               onChange={(e) => setNewPartnerName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") addPartner(); }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAddPartner(); }}
             />
             <button
-              onClick={addPartner}
+              onClick={handleAddPartner}
               disabled={!newPartnerName.trim() || savedPartners.includes(newPartnerName.trim())}
               className="btn-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -270,7 +276,7 @@ function AdminClientsPageInner() {
                     </div>
                     {isSaved && (
                       <button
-                        onClick={() => removePartner(p)}
+                        onClick={() => handleRemovePartner(p)}
                         className="text-gray-400 hover:text-red-500 ml-1"
                         title="Remove partner"
                       >
@@ -299,18 +305,18 @@ function AdminClientsPageInner() {
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="font-semibold text-gray-900">
-                      {client.personalInfo.firstName} {client.personalInfo.lastName}
+                      {client.firstName} {client.lastName}
                     </div>
-                    <div className="text-xs text-gray-500">{client.personalInfo.email}</div>
+                    <div className="text-xs text-gray-500">{client.email}</div>
                   </div>
                   <span className={statusBadge[client.onboardingStatus]}>
                     {statusLabel[client.onboardingStatus]}
                   </span>
                 </div>
-                {client.businessInfo.businessName && (
+                {client.businessName && (
                   <div className="mobile-card-row">
                     <span className="mobile-card-label">Business</span>
-                    <span className="mobile-card-value">{client.businessInfo.businessName}</span>
+                    <span className="mobile-card-value">{client.businessName}</span>
                   </div>
                 )}
                 {client.referralPartner && (

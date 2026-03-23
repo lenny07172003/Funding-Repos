@@ -91,6 +91,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           role: user.role,
           agencyId: user.agencyId,
           subAccountId: user.subAccountId,
+          clientId: user.clientId || null,
           agencyName: user.agency?.name || null,
           subAccountName: user.subAccount?.name || null,
         };
@@ -104,6 +105,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.role = (user as any).role;
         token.agencyId = (user as any).agencyId;
         token.subAccountId = (user as any).subAccountId;
+        token.clientId = (user as any).clientId;
         token.agencyName = (user as any).agencyName;
         token.subAccountName = (user as any).subAccountName;
       }
@@ -115,6 +117,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         (session.user as any).role = token.role as string;
         (session.user as any).agencyId = token.agencyId as string | null;
         (session.user as any).subAccountId = token.subAccountId as string | null;
+        (session.user as any).clientId = token.clientId as string | null;
         (session.user as any).agencyName = token.agencyName as string | null;
         (session.user as any).subAccountName = token.subAccountName as string | null;
       }

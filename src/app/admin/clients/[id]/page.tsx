@@ -3,8 +3,79 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Client, FundingApplication, CreditBureauData, ActivityEntry } from "@/lib/types";
-import { getClient, upsertClient, getApiKey, setApiKey, getApiProvider, setApiProvider, getReferralPartners, getLenders, ensureLenderByName } from "@/lib/store";
+import {
+  getClientWithDecryptedFields,
+  updateClient,
+  createFundingApplication,
+  updateFundingApplication,
+  deleteFundingApplication,
+  reorderFundingApplications,
+  createDocument,
+  deleteDocument as deleteDocAction,
+  addActivityEntry,
+  getReferralPartners,
+  getLenders,
+  ensureLenderByName,
+  createClientLogin,
+} from "@/lib/client-actions";
+import { runStackingAnalysis, runRevenueLendingAnalysis, getClientAnalyses, sendBlueprintToClient } from "@/lib/funding-analysis";
+import { parseManualCreditData } from "@/lib/credit-report-parser";
+
+type CreditBureauData = {
+  score: number | null;
+  accounts: number | null;
+  creditAge: string;
+  derogatoryAccounts: number | null;
+  highestCreditLimit: number | null;
+  inquiries: number | null;
+};
+
+type CreditProfile = {
+  experian: CreditBureauData;
+  equifax: CreditBureauData;
+  transUnion: CreditBureauData;
+  apiKeyConfigured: boolean;
+  lastPulled: string | null;
+};
+
+type AgreementSignature = {
+  fullName: string;
+  signatureData: string;
+  dateSigned: string;
+  ipAddress: string;
+} | null;
+
+type OnboardingSteps = {
+  agreement: boolean;
+  businessForm: boolean;
+  creditMonitoring: boolean;
+};
+
+/** Wrapper type that parses JSON fields from Prisma flat model */
+type ClientDetail = Awaited<ReturnType<typeof getClientWithDecryptedFields>> & {
+  _creditProfile: CreditProfile;
+  _agreementSignature: AgreementSignature;
+  _onboardingSteps: OnboardingSteps;
+};
+
+const emptyCreditProfile: CreditProfile = {
+  experian: { score: null, accounts: null, creditAge: "", derogatoryAccounts: null, highestCreditLimit: null, inquiries: null },
+  equifax: { score: null, accounts: null, creditAge: "", derogatoryAccounts: null, highestCreditLimit: null, inquiries: null },
+  transUnion: { score: null, accounts: null, creditAge: "", derogatoryAccounts: null, highestCreditLimit: null, inquiries: null },
+  apiKeyConfigured: false,
+  lastPulled: null,
+};
+
+function parseClientDetail(raw: Awaited<ReturnType<typeof getClientWithDecryptedFields>>): ClientDetail {
+  let cp: CreditProfile;
+  try { cp = JSON.parse(raw.creditProfile || "{}"); } catch { cp = emptyCreditProfile; }
+  if (!cp.experian) cp = emptyCreditProfile;
+  let sig: AgreementSignature = null;
+  try { sig = raw.agreementSignature ? JSON.parse(raw.agreementSignature) : null; } catch { sig = null; }
+  let steps: OnboardingSteps;
+  try { steps = JSON.parse(raw.onboardingCompletedSteps || "{}"); } catch { steps = { agreement: false, businessForm: false, creditMonitoring: false }; }
+  return { ...raw, _creditProfile: cp, _agreementSignature: sig, _onboardingSteps: steps };
+}
 
 type Tab = "credit" | "business" | "applications" | "documents" | "notes";
 
@@ -35,7 +106,7 @@ const appStatuses = [
 export default function ClientDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const [client, setClient] = useState<Client | null>(null);
+  const [client, setClient] = useState<ClientDetail | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("credit");
   const [saved, setSaved] = useState(false);
   const [apiKey, setApiKeyState] = useState("");
@@ -53,159 +124,151 @@ export default function ClientDetailPage() {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const dragNodeRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    const c = getClient(params.id as string);
-    if (!c) {
+  async function loadClient() {
+    try {
+      const raw = await getClientWithDecryptedFields(params.id as string);
+      setClient(parseClientDetail(raw));
+    } catch {
       router.push("/admin/clients");
-      return;
     }
-    setClient(c);
-    setApiKeyState(getApiKey());
-    setApiProviderState(getApiProvider());
-    setSavedPartners(getReferralPartners());
-    setLenderNames(getLenders().map((l) => l.name).filter(Boolean).sort());
-  }, [params.id, router]);
+  }
 
-  function save(updated: Client) {
-    // Recalculate totals
-    updated.totalApproved = updated.fundingApplications
-      .filter((a) => a.status === "approved" || a.status === "funded")
-      .reduce((sum, a) => sum + (a.amount || 0), 0);
-    updated.totalFunded = updated.fundingApplications
-      .filter((a) => a.status === "funded")
-      .reduce((sum, a) => sum + (a.amount || 0), 0);
+  useEffect(() => {
+    async function load() {
+      await loadClient();
+      const [partners, lenders] = await Promise.all([getReferralPartners(), getLenders()]);
+      setSavedPartners(partners);
+      setLenderNames(lenders.map((l) => l.name).filter(Boolean).sort());
+    }
+    load();
+  }, [params.id]);
 
-    // Ensure activityLog exists for older clients
-    if (!updated.activityLog) updated.activityLog = [];
-
-    upsertClient(updated);
-    setClient({ ...updated });
+  function showSaved() {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
 
-  function addActivity(updated: Client, type: ActivityEntry["type"], message: string, details?: string) {
-    if (!updated.activityLog) updated.activityLog = [];
-    updated.activityLog.unshift({
-      id: crypto.randomUUID(),
-      timestamp: new Date().toISOString(),
-      type,
-      message,
-      details,
-    });
+  async function saveField(data: Record<string, unknown>) {
+    if (!client) return;
+    await updateClient(client.id, data as any);
+    await loadClient();
+    showSaved();
   }
 
-  function updateBureau(bureau: typeof bureauNames[number], field: keyof CreditBureauData, value: string) {
+  async function saveCreditProfile(updated: CreditProfile) {
     if (!client) return;
-    const updated = { ...client };
+    await updateClient(client.id, { creditProfile: JSON.stringify(updated) });
+    await loadClient();
+    showSaved();
+  }
+
+  async function updateBureau(bureau: typeof bureauNames[number], field: keyof CreditBureauData, value: string) {
+    if (!client) return;
+    const cp = { ...client._creditProfile };
     const numFields: (keyof CreditBureauData)[] = ["score", "accounts", "derogatoryAccounts", "highestCreditLimit", "inquiries"];
     if (numFields.includes(field)) {
-      (updated.creditProfile[bureau] as any)[field] = value === "" ? null : Number(value);
+      (cp[bureau] as any)[field] = value === "" ? null : Number(value);
     } else {
-      (updated.creditProfile[bureau] as any)[field] = value;
+      (cp[bureau] as any)[field] = value;
     }
-    save(updated);
+    await saveCreditProfile(cp);
   }
 
-  function updateBusiness(field: string, value: string) {
+  async function updateBusiness(field: string, value: string) {
     if (!client) return;
-    const updated = { ...client };
-    (updated.businessInfo as any)[field] = value;
-    save(updated);
+    await saveField({ [field]: value });
   }
 
-  function updatePersonal(field: string, value: string) {
+  async function updatePersonal(field: string, value: string) {
     if (!client) return;
-    const updated = { ...client };
-    (updated.personalInfo as any)[field] = value;
-    save(updated);
+    await saveField({ [field]: value });
   }
 
-  function addApplication() {
+  async function addApplication() {
     if (!client) return;
-    const newApp: FundingApplication = {
-      id: crypto.randomUUID(),
-      type: "credit_card",
-      lender: "",
-      product: "",
-      amount: null,
-      status: "pending",
-      appliedDate: new Date().toISOString().split("T")[0],
-      approvedDate: null,
-      fundedDate: null,
-      notes: "",
-    };
-    const updated = { ...client, fundingApplications: [...client.fundingApplications, newApp] };
-    addActivity(updated, "application", "Added a new funding application");
-    save(updated);
+    await createFundingApplication(client.id, { type: "credit_card" });
+    await addActivityEntry(client.id, { type: "application", message: "Added a new funding application" });
+    await loadClient();
+    showSaved();
   }
 
-  function updateApplication(id: string, field: keyof FundingApplication, value: string) {
+  async function handleUpdateApplication(id: string, field: string, value: string) {
     if (!client) return;
-    const updated = { ...client };
-    const app = updated.fundingApplications.find((a) => a.id === id);
+    const app = client.fundingApplications.find((a) => a.id === id);
     if (!app) return;
     const oldValue = (app as any)[field];
+    const updateData: Record<string, unknown> = {};
     if (field === "amount") {
-      app.amount = value === "" ? null : Number(value);
+      updateData.amount = value === "" ? null : Number(value);
     } else {
-      (app as any)[field] = value;
+      updateData[field] = value;
     }
+    await updateFundingApplication(id, updateData as any);
     // Auto-add lender to marketplace when name is set
     if (field === "lender" && value.trim()) {
-      ensureLenderByName(value);
-      setLenderNames(getLenders().map((l) => l.name).filter(Boolean).sort());
+      await ensureLenderByName(value);
+      const lenders = await getLenders();
+      setLenderNames(lenders.map((l) => l.name).filter(Boolean).sort());
     }
     // Log status changes
     if (field === "status" && value !== oldValue) {
       const lenderLabel = app.lender || "Unknown lender";
-      addActivity(updated, "status_change", `Application status changed to "${value}"`, `${lenderLabel} — ${app.product || "No product"}`);
+      await addActivityEntry(client.id, {
+        type: "status_change",
+        message: `Application status changed to "${value}"`,
+        details: `${lenderLabel} — ${app.product || "No product"}`,
+      });
     }
-    save(updated);
+    await loadClient();
+    showSaved();
   }
 
-  function removeApplication(id: string) {
+  async function removeApplication(id: string) {
     if (!client) return;
     if (!confirm("Remove this application? This cannot be undone.")) return;
     const removed = client.fundingApplications.find((a) => a.id === id);
-    const updated = {
-      ...client,
-      fundingApplications: client.fundingApplications.filter((a) => a.id !== id),
-    };
     if (removed) {
-      addActivity(updated, "application", `Removed application`, `${removed.lender || "Unknown lender"} — ${removed.product || "No product"}`);
+      await addActivityEntry(client.id, {
+        type: "application",
+        message: "Removed application",
+        details: `${removed.lender || "Unknown lender"} — ${removed.product || "No product"}`,
+      });
     }
-    save(updated);
+    await deleteFundingApplication(id);
+    await loadClient();
+    showSaved();
   }
 
-  function reorderApplications(fromIndex: number, toIndex: number) {
+  async function reorderApplications(fromIndex: number, toIndex: number) {
     if (!client || fromIndex === toIndex) return;
     const apps = [...client.fundingApplications];
     const [moved] = apps.splice(fromIndex, 1);
     apps.splice(toIndex, 0, moved);
-    save({ ...client, fundingApplications: apps });
+    await reorderFundingApplications(client.id, apps.map((a) => a.id));
+    await loadClient();
   }
 
   function saveApiSettings() {
-    setApiKey(apiKey);
-    setApiProvider(apiProvider);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    // API keys are now stored per-agency/sub-account, not in localStorage
+    // This is a placeholder for future API key management
+    showSaved();
   }
 
-  function updateOnboardingStatus(status: Client["onboardingStatus"]) {
+  async function updateOnboardingStatus(status: string) {
     if (!client) return;
-    const updated = { ...client, onboardingStatus: status };
-    if (status === "active" && !updated.onboardedAt) {
-      updated.onboardedAt = new Date().toISOString();
+    const data: Record<string, unknown> = { onboardingStatus: status };
+    if (status === "active" && !client.onboardedAt) {
+      data.onboardedAt = new Date().toISOString();
     }
     const labels: Record<string, string> = { not_started: "Not Started", agreement_sent: "Agreement Sent", agreement_signed: "Agreement Signed", active: "Active" };
-    addActivity(updated, "onboarding", `Onboarding status changed to "${labels[status] || status}"`);
-    save(updated);
+    await addActivityEntry(client.id, { type: "onboarding", message: `Onboarding status changed to "${labels[status] || status}"` });
+    await updateClient(client.id, data as any);
+    await loadClient();
+    showSaved();
   }
 
   async function sendOnboardingEmail() {
-    if (!client || !client.personalInfo.email) {
+    if (!client || !client.email) {
       alert("Client must have an email address to send the onboarding link.");
       return;
     }
@@ -217,28 +280,28 @@ export default function ClientDetailPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          clientName: `${client.personalInfo.firstName} ${client.personalInfo.lastName}`.trim() || "Client",
-          clientEmail: client.personalInfo.email,
+          clientName: `${client.firstName} ${client.lastName}`.trim() || "Client",
+          clientEmail: client.email,
           onboardingLink: link,
-          businessName: client.businessInfo.businessName || "",
+          businessName: client.businessName || "",
         }),
       });
 
-      const data = await res.json();
+      const respData = await res.json();
 
       if (!res.ok) {
-        alert(`Failed to send email: ${data.error || "Unknown error"}. Make sure RESEND_API_KEY is set in your .env.local file.`);
+        alert(`Failed to send email: ${respData.error || "Unknown error"}. Make sure RESEND_API_KEY is set in your .env.local file.`);
         setEmailSending(false);
         return;
       }
 
-      const updated = {
-        ...client,
-        onboardingStatus: (client.onboardingStatus === "not_started" ? "agreement_sent" : client.onboardingStatus) as Client["onboardingStatus"],
+      const newStatus = client.onboardingStatus === "not_started" ? "agreement_sent" : client.onboardingStatus;
+      await updateClient(client.id, {
+        onboardingStatus: newStatus,
         onboardingEmailSentAt: new Date().toISOString(),
-      };
-      addActivity(updated, "email", "Sent onboarding email", client.personalInfo.email);
-      save(updated);
+      });
+      await addActivityEntry(client.id, { type: "email", message: "Sent onboarding email", details: client.email });
+      await loadClient();
       setEmailSending(false);
       setEmailSent(true);
       setTimeout(() => setEmailSent(false), 4000);
@@ -252,7 +315,7 @@ export default function ClientDetailPage() {
   if (!client) return null;
 
   const onboardingLink = `${typeof window !== "undefined" ? window.location.origin : ""}/onboard/${client.id}`;
-  const steps = client.onboardingCompletedSteps || { agreement: false, businessForm: false, creditMonitoring: false };
+  const steps = client._onboardingSteps;
   const completedStepCount = [steps.agreement, steps.businessForm, steps.creditMonitoring].filter(Boolean).length;
 
   const tabs: { key: Tab; label: string }[] = [
@@ -288,10 +351,10 @@ export default function ClientDetailPage() {
           </Link>
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
-              {client.personalInfo.firstName} {client.personalInfo.lastName || "New Client"}
+              {client.firstName} {client.lastName || "New Client"}
             </h1>
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1">
-              <span className="text-sm text-gray-500 break-all">{client.personalInfo.email || "No email"}</span>
+              <span className="text-sm text-gray-500 break-all">{client.email || "No email"}</span>
               <span className={statusBadge[client.onboardingStatus]}>
                 {statusLabel[client.onboardingStatus]}
               </span>
@@ -305,7 +368,7 @@ export default function ClientDetailPage() {
             <select
               className="input-field w-auto text-sm"
               value={client.onboardingStatus}
-              onChange={(e) => updateOnboardingStatus(e.target.value as Client["onboardingStatus"])}
+              onChange={(e) => updateOnboardingStatus(e.target.value as string)}
             >
               <option value="not_started">Not Started</option>
               <option value="agreement_sent">Agreement Sent</option>
@@ -354,7 +417,7 @@ export default function ClientDetailPage() {
           </div>
           <button
             onClick={sendOnboardingEmail}
-            disabled={emailSending || !client.personalInfo.email}
+            disabled={emailSending || !client.email}
             className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {emailSending ? (
@@ -423,7 +486,7 @@ export default function ClientDetailPage() {
             </p>
             <p className="text-xs text-gray-500 mt-0.5">
               {steps.agreement
-                ? `Signed ${client.agreementSignature?.dateSigned ? new Date(client.agreementSignature.dateSigned).toLocaleDateString() : ""}`
+                ? `Signed ${client._agreementSignature?.dateSigned ? new Date(client._agreementSignature.dateSigned).toLocaleDateString() : ""}`
                 : "Not signed yet"}
             </p>
           </div>
@@ -487,9 +550,17 @@ export default function ClientDetailPage() {
 
         {client.onboardingEmailSentAt && (
           <p className="text-xs text-gray-400 mt-3">
-            Last sent: {new Date(client.onboardingEmailSentAt).toLocaleString()} to {client.personalInfo.email}
+            Last sent: {new Date(client.onboardingEmailSentAt).toLocaleString()} to {client.email}
           </p>
         )}
+      </div>
+
+      {/* Client Login & AI Analysis Actions */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Client Portal Login */}
+        <ClientLoginPanel clientId={client.id} clientEmail={client.email} onCreated={loadClient} />
+        {/* AI Funding Analysis */}
+        <StackingAnalysisPanel clientId={client.id} />
       </div>
 
       {/* Tab Navigation */}
@@ -517,7 +588,7 @@ export default function ClientDetailPage() {
           {/* Manual Credit Entry per Bureau */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {bureauNames.map((bureau) => {
-              const data = client.creditProfile[bureau];
+              const data = client._creditProfile[bureau];
               return (
                 <div key={bureau} className="card p-6">
                   <h3 className="font-semibold text-lg text-brand-800 mb-4 pb-2 border-b border-gray-100">
@@ -644,9 +715,8 @@ export default function ClientDetailPage() {
             <select
               className="input-field"
               value={client.referralPartner || ""}
-              onChange={(e) => {
-                const updated = { ...client, referralPartner: e.target.value };
-                save(updated);
+              onChange={async (e) => {
+                await saveField({ referralPartner: e.target.value });
               }}
             >
               <option value="">No Referral Partner</option>
@@ -666,43 +736,43 @@ export default function ClientDetailPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="label">First Name</label>
-                <input className="input-field" value={client.personalInfo.firstName} onChange={(e) => updatePersonal("firstName", e.target.value)} />
+                <input className="input-field" value={client.firstName} onChange={(e) => updatePersonal("firstName", e.target.value)} />
               </div>
               <div>
                 <label className="label">Last Name</label>
-                <input className="input-field" value={client.personalInfo.lastName} onChange={(e) => updatePersonal("lastName", e.target.value)} />
+                <input className="input-field" value={client.lastName} onChange={(e) => updatePersonal("lastName", e.target.value)} />
               </div>
               <div>
                 <label className="label">Email</label>
-                <input className="input-field" type="email" value={client.personalInfo.email} onChange={(e) => updatePersonal("email", e.target.value)} />
+                <input className="input-field" type="email" value={client.email} onChange={(e) => updatePersonal("email", e.target.value)} />
               </div>
               <div>
                 <label className="label">Phone</label>
-                <input className="input-field" type="tel" value={client.personalInfo.phone} onChange={(e) => updatePersonal("phone", e.target.value)} />
+                <input className="input-field" type="tel" value={client.phone} onChange={(e) => updatePersonal("phone", e.target.value)} />
               </div>
               <div>
                 <label className="label">Date of Birth</label>
-                <input className="input-field" type="date" value={client.personalInfo.dateOfBirth} onChange={(e) => updatePersonal("dateOfBirth", e.target.value)} />
+                <input className="input-field" type="date" value={client.dateOfBirth} onChange={(e) => updatePersonal("dateOfBirth", e.target.value)} />
               </div>
               <div>
                 <label className="label">SSN (Last 4)</label>
-                <input className="input-field" maxLength={4} placeholder="XXXX" value={client.personalInfo.ssn} onChange={(e) => updatePersonal("ssn", e.target.value)} />
+                <input className="input-field" maxLength={4} placeholder="XXXX" value={client.ssn} onChange={(e) => updatePersonal("ssn", e.target.value)} />
               </div>
               <div>
                 <label className="label">Address</label>
-                <input className="input-field" value={client.personalInfo.address} onChange={(e) => updatePersonal("address", e.target.value)} />
+                <input className="input-field" value={client.address} onChange={(e) => updatePersonal("address", e.target.value)} />
               </div>
               <div>
                 <label className="label">City</label>
-                <input className="input-field" value={client.personalInfo.city} onChange={(e) => updatePersonal("city", e.target.value)} />
+                <input className="input-field" value={client.city} onChange={(e) => updatePersonal("city", e.target.value)} />
               </div>
               <div>
                 <label className="label">State</label>
-                <input className="input-field" value={client.personalInfo.state} onChange={(e) => updatePersonal("state", e.target.value)} />
+                <input className="input-field" value={client.state} onChange={(e) => updatePersonal("state", e.target.value)} />
               </div>
               <div>
                 <label className="label">ZIP</label>
-                <input className="input-field" value={client.personalInfo.zip} onChange={(e) => updatePersonal("zip", e.target.value)} />
+                <input className="input-field" value={client.zip} onChange={(e) => updatePersonal("zip", e.target.value)} />
               </div>
             </div>
           </div>
@@ -712,27 +782,27 @@ export default function ClientDetailPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="label">Business Name</label>
-                <input className="input-field" value={client.businessInfo.businessName} onChange={(e) => updateBusiness("businessName", e.target.value)} />
+                <input className="input-field" value={client.businessName} onChange={(e) => updateBusiness("businessName", e.target.value)} />
               </div>
               <div>
                 <label className="label">Business Age</label>
-                <input className="input-field" placeholder="e.g. 2 years" value={client.businessInfo.businessAge} onChange={(e) => updateBusiness("businessAge", e.target.value)} />
+                <input className="input-field" placeholder="e.g. 2 years" value={client.businessAge} onChange={(e) => updateBusiness("businessAge", e.target.value)} />
               </div>
               <div>
                 <label className="label">EIN</label>
-                <input className="input-field" value={client.businessInfo.ein} onChange={(e) => updateBusiness("ein", e.target.value)} />
+                <input className="input-field" value={client.ein} onChange={(e) => updateBusiness("ein", e.target.value)} />
               </div>
               <div>
                 <label className="label">NAICS Code</label>
-                <input className="input-field" value={client.businessInfo.naicsCode} onChange={(e) => updateBusiness("naicsCode", e.target.value)} />
+                <input className="input-field" value={client.naicsCode} onChange={(e) => updateBusiness("naicsCode", e.target.value)} />
               </div>
               <div>
                 <label className="label">SIC Code</label>
-                <input className="input-field" value={client.businessInfo.sicCode} onChange={(e) => updateBusiness("sicCode", e.target.value)} />
+                <input className="input-field" value={client.sicCode} onChange={(e) => updateBusiness("sicCode", e.target.value)} />
               </div>
               <div>
                 <label className="label">Entity Type</label>
-                <select className="input-field" value={client.businessInfo.entityType} onChange={(e) => updateBusiness("entityType", e.target.value)}>
+                <select className="input-field" value={client.entityType} onChange={(e) => updateBusiness("entityType", e.target.value)}>
                   <option value="">Select...</option>
                   <option value="sole_proprietorship">Sole Proprietorship</option>
                   <option value="llc">LLC</option>
@@ -743,19 +813,19 @@ export default function ClientDetailPage() {
               </div>
               <div>
                 <label className="label">State of Incorporation</label>
-                <input className="input-field" value={client.businessInfo.stateOfIncorporation} onChange={(e) => updateBusiness("stateOfIncorporation", e.target.value)} />
+                <input className="input-field" value={client.stateOfIncorporation} onChange={(e) => updateBusiness("stateOfIncorporation", e.target.value)} />
               </div>
               <div>
                 <label className="label">Annual Revenue</label>
-                <input className="input-field" placeholder="$" value={client.businessInfo.annualRevenue} onChange={(e) => updateBusiness("annualRevenue", e.target.value)} />
+                <input className="input-field" placeholder="$" value={client.annualRevenue} onChange={(e) => updateBusiness("annualRevenue", e.target.value)} />
               </div>
               <div>
                 <label className="label">Business Phone</label>
-                <input className="input-field" type="tel" value={client.businessInfo.businessPhone} onChange={(e) => updateBusiness("businessPhone", e.target.value)} />
+                <input className="input-field" type="tel" value={client.businessPhone} onChange={(e) => updateBusiness("businessPhone", e.target.value)} />
               </div>
               <div className="md:col-span-3">
                 <label className="label">Business Address</label>
-                <input className="input-field" value={client.businessInfo.businessAddress} onChange={(e) => updateBusiness("businessAddress", e.target.value)} />
+                <input className="input-field" value={client.businessAddress} onChange={(e) => updateBusiness("businessAddress", e.target.value)} />
               </div>
             </div>
           </div>
@@ -964,7 +1034,7 @@ export default function ClientDetailPage() {
                       <select
                         className="input-field"
                         value={app.type}
-                        onChange={(e) => updateApplication(app.id, "type", e.target.value)}
+                        onChange={(e) => handleUpdateApplication(app.id, "type", e.target.value)}
                       >
                         {appTypes.map((t) => (
                           <option key={t.value} value={t.value}>{t.label}</option>
@@ -978,7 +1048,7 @@ export default function ClientDetailPage() {
                         placeholder="Type or select a lender..."
                         list={`lender-list-${app.id}`}
                         value={app.lender}
-                        onChange={(e) => updateApplication(app.id, "lender", e.target.value)}
+                        onChange={(e) => handleUpdateApplication(app.id, "lender", e.target.value)}
                       />
                       <datalist id={`lender-list-${app.id}`}>
                         {lenderNames.map((name) => (
@@ -992,7 +1062,7 @@ export default function ClientDetailPage() {
                         className="input-field"
                         placeholder="e.g. Ink Business Preferred"
                         value={app.product}
-                        onChange={(e) => updateApplication(app.id, "product", e.target.value)}
+                        onChange={(e) => handleUpdateApplication(app.id, "product", e.target.value)}
                       />
                     </div>
                     <div>
@@ -1002,7 +1072,7 @@ export default function ClientDetailPage() {
                         type="number"
                         placeholder="$"
                         value={app.amount ?? ""}
-                        onChange={(e) => updateApplication(app.id, "amount", e.target.value)}
+                        onChange={(e) => handleUpdateApplication(app.id, "amount", e.target.value)}
                       />
                     </div>
                     <div>
@@ -1010,7 +1080,7 @@ export default function ClientDetailPage() {
                       <select
                         className="input-field"
                         value={app.status}
-                        onChange={(e) => updateApplication(app.id, "status", e.target.value)}
+                        onChange={(e) => handleUpdateApplication(app.id, "status", e.target.value)}
                       >
                         {appStatuses.map((s) => (
                           <option key={s.value} value={s.value}>{s.label}</option>
@@ -1023,7 +1093,7 @@ export default function ClientDetailPage() {
                         className="input-field"
                         type="date"
                         value={app.appliedDate}
-                        onChange={(e) => updateApplication(app.id, "appliedDate", e.target.value)}
+                        onChange={(e) => handleUpdateApplication(app.id, "appliedDate", e.target.value)}
                       />
                     </div>
                     <div>
@@ -1032,7 +1102,7 @@ export default function ClientDetailPage() {
                         className="input-field"
                         type="date"
                         value={app.approvedDate ?? ""}
-                        onChange={(e) => updateApplication(app.id, "approvedDate", e.target.value)}
+                        onChange={(e) => handleUpdateApplication(app.id, "approvedDate", e.target.value)}
                       />
                     </div>
                     <div>
@@ -1041,7 +1111,7 @@ export default function ClientDetailPage() {
                         className="input-field"
                         type="date"
                         value={app.fundedDate ?? ""}
-                        onChange={(e) => updateApplication(app.id, "fundedDate", e.target.value)}
+                        onChange={(e) => handleUpdateApplication(app.id, "fundedDate", e.target.value)}
                       />
                     </div>
                     <div className="md:col-span-2 lg:col-span-4">
@@ -1050,7 +1120,7 @@ export default function ClientDetailPage() {
                         className="input-field"
                         placeholder="Additional notes..."
                         value={app.notes}
-                        onChange={(e) => updateApplication(app.id, "notes", e.target.value)}
+                        onChange={(e) => handleUpdateApplication(app.id, "notes", e.target.value)}
                       />
                     </div>
                   </div>
@@ -1111,18 +1181,23 @@ export default function ClientDetailPage() {
             // Attach file to existing document (no naming needed)
             const file = files[0];
             const reader = new FileReader();
-            reader.onload = () => {
+            reader.onload = async () => {
               const base64 = reader.result as string;
-              const updated = { ...client };
-              const doc = updated.documents.find((d) => d.id === docId);
+              // Delete old and recreate with file data
+              const doc = client.documents.find((d) => d.id === docId);
               if (doc) {
-                doc.fileName = file.name;
-                doc.fileData = base64;
-                doc.fileSize = file.size;
-                doc.uploadedAt = new Date().toISOString();
-                doc.source = "admin";
+                await deleteDocAction(docId);
+                await createDocument(client.id, {
+                  name: doc.name,
+                  type: doc.type,
+                  fileName: file.name,
+                  fileData: base64,
+                  fileSize: file.size,
+                  source: "admin",
+                });
               }
-              save(updated);
+              await loadClient();
+              showSaved();
             };
             reader.readAsDataURL(file);
           } else {
@@ -1147,53 +1222,59 @@ export default function ClientDetailPage() {
           }
         }
 
-        function confirmUpload() {
+        async function confirmUpload() {
           if (!client) return;
           const docType = uploadDocType;
           const docLabel = docType === "other" && uploadCustomName.trim()
             ? uploadCustomName.trim()
             : DOC_TYPE_LABELS[docType] || docType;
 
-          const newDocs = pendingFiles.map((pf) => ({
-            id: crypto.randomUUID(),
-            name: docLabel,
-            type: docType === "other" && uploadCustomName.trim() ? "other" : docType,
-            uploadedAt: new Date().toISOString(),
-            status: "pending" as const,
-            fileName: pf.file.name,
-            fileData: pf.base64,
-            fileSize: pf.file.size,
-            source: "admin" as const,
-          }));
+          for (const pf of pendingFiles) {
+            await createDocument(client.id, {
+              name: docLabel,
+              type: docType === "other" && uploadCustomName.trim() ? "other" : docType,
+              fileName: pf.file.name,
+              fileData: pf.base64,
+              fileSize: pf.file.size,
+              source: "admin",
+            });
+          }
 
-          const updated = { ...client, documents: [...client.documents, ...newDocs] };
-          addActivity(updated, "document", `Uploaded ${newDocs.length} document${newDocs.length > 1 ? "s" : ""}`, docLabel);
-          save(updated);
+          await addActivityEntry(client.id, {
+            type: "document",
+            message: `Uploaded ${pendingFiles.length} document${pendingFiles.length > 1 ? "s" : ""}`,
+            details: docLabel,
+          });
+          await loadClient();
+          showSaved();
           setShowUploadModal(false);
           setPendingFiles([]);
         }
 
-        function requestAllDocuments() {
+        async function requestAllDocuments() {
           if (!client) return;
           const existing = client.documents.map((d) => d.name);
-          const newDocs = REQUIRED_DOCS.filter((r) => !existing.includes(r.name)).map((r) => ({
-            id: crypto.randomUUID(),
-            name: r.name,
-            type: r.type,
-            uploadedAt: new Date().toISOString(),
-            status: "pending" as const,
-            fileName: "",
-            fileData: "",
-            fileSize: 0,
-            source: "requested" as const,
-          }));
-          if (newDocs.length === 0) {
+          const toRequest = REQUIRED_DOCS.filter((r) => !existing.includes(r.name));
+          if (toRequest.length === 0) {
             alert("All standard documents have already been requested.");
             return;
           }
-          const updated = { ...client, documents: [...client.documents, ...newDocs] };
-          addActivity(updated, "document", `Requested ${newDocs.length} standard documents`);
-          save(updated);
+          for (const r of toRequest) {
+            await createDocument(client.id, {
+              name: r.name,
+              type: r.type,
+              fileName: "",
+              fileData: "",
+              fileSize: 0,
+              source: "requested",
+            });
+          }
+          await addActivityEntry(client.id, {
+            type: "document",
+            message: `Requested ${toRequest.length} standard documents`,
+          });
+          await loadClient();
+          showSaved();
         }
 
         return (
@@ -1379,11 +1460,10 @@ export default function ClientDetailPage() {
                     <select
                       className="input-field w-auto text-xs py-1"
                       value={doc.status}
-                      onChange={(e) => {
-                        const updated = { ...client };
-                        const d = updated.documents.find((dd) => dd.id === doc.id);
-                        if (d) d.status = e.target.value as any;
-                        save(updated);
+                      onChange={async (e) => {
+                        await import("@/lib/client-actions").then((m) => m.updateDocumentStatus(doc.id, e.target.value));
+                        await loadClient();
+                        showSaved();
                       }}
                     >
                       <option value="pending">Pending</option>
@@ -1405,10 +1485,11 @@ export default function ClientDetailPage() {
 
                     {/* Remove */}
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         if (!confirm("Remove this document? This cannot be undone.")) return;
-                        const updated = { ...client, documents: client.documents.filter((d) => d.id !== doc.id) };
-                        save(updated);
+                        await deleteDocAction(doc.id);
+                        await loadClient();
+                        showSaved();
                       }}
                       className="text-xs text-red-500 hover:text-red-700 shrink-0"
                     >
@@ -1433,17 +1514,17 @@ export default function ClientDetailPage() {
 
       {/* NOTES & ACTIVITY TAB */}
       {activeTab === "notes" && (() => {
-        function submitNote() {
+        async function submitNote() {
           if (!client || !newNote.trim()) return;
-          const updated = { ...client };
-          addActivity(updated, "note", newNote.trim());
-          save(updated);
+          await addActivityEntry(client.id, { type: "note", message: newNote.trim() });
+          await loadClient();
           setNewNote("");
+          showSaved();
         }
 
         const activityLog = client.activityLog || [];
 
-        const iconMap: Record<ActivityEntry["type"], { bg: string; icon: JSX.Element }> = {
+        const iconMap: Record<string, { bg: string; icon: JSX.Element }> = {
           note: {
             bg: "bg-blue-100 text-blue-600",
             icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />,
@@ -1474,7 +1555,7 @@ export default function ClientDetailPage() {
           },
         };
 
-        const typeLabels: Record<ActivityEntry["type"], string> = {
+        const typeLabels: Record<string, string> = {
           note: "Note",
           email: "Email",
           application: "Application",
@@ -1503,7 +1584,7 @@ export default function ClientDetailPage() {
         }
 
         // Group activity entries by date
-        const grouped = new Map<string, ActivityEntry[]>();
+        const grouped = new Map<string, typeof client.activityLog>();
         activityLog.forEach((entry) => {
           const dateKey = new Date(entry.timestamp).toLocaleDateString("en-US", {
             weekday: "long",
@@ -1549,11 +1630,11 @@ export default function ClientDetailPage() {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-amber-800">Legacy Notes</span>
                   <button
-                    onClick={() => {
-                      const updated = { ...client };
-                      addActivity(updated, "note", client.notes, "Migrated from legacy notes");
-                      updated.notes = "";
-                      save(updated);
+                    onClick={async () => {
+                      await addActivityEntry(client.id, { type: "note", message: client.notes, details: "Migrated from legacy notes" });
+                      await updateClient(client.id, { notes: "" });
+                      await loadClient();
+                      showSaved();
                     }}
                     className="text-xs text-amber-700 hover:text-amber-900 underline"
                   >
@@ -1626,6 +1707,350 @@ export default function ClientDetailPage() {
           </div>
         );
       })()}
+    </div>
+  );
+}
+
+// ─── Client Login Panel ───
+
+function ClientLoginPanel({ clientId, clientEmail, onCreated }: { clientId: string; clientEmail: string; onCreated: () => void }) {
+  const [showForm, setShowForm] = useState(false);
+  const [email, setEmail] = useState(clientEmail);
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email || !password) return;
+    setLoading(true);
+    setMessage(null);
+    try {
+      await createClientLogin(clientId, { email, password });
+      setMessage({ type: "success", text: `Login created! Client can sign in at /login with ${email}` });
+      setShowForm(false);
+      setPassword("");
+      onCreated();
+    } catch (err: any) {
+      setMessage({ type: "error", text: err.message || "Failed to create login" });
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-5">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-9 h-9 bg-purple-100 rounded-lg flex items-center justify-center">
+          <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="font-semibold text-gray-900">Client Portal Access</h3>
+          <p className="text-xs text-gray-500">Create login credentials so the client can access their portal</p>
+        </div>
+      </div>
+
+      {message && (
+        <div className={`mb-3 p-3 rounded-lg text-sm ${message.type === "success" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+          {message.text}
+        </div>
+      )}
+
+      {!showForm ? (
+        <button onClick={() => setShowForm(true)} className="btn-secondary text-sm w-full">
+          Create Client Login
+        </button>
+      ) : (
+        <form onSubmit={handleCreate} className="space-y-3">
+          <div>
+            <label className="label">Client Email</label>
+            <input className="input-field" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          </div>
+          <div>
+            <label className="label">Temporary Password</label>
+            <input className="input-field" type="text" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="Client will change this on first login" />
+          </div>
+          <div className="flex gap-2">
+            <button type="submit" disabled={loading} className="btn-primary text-sm flex-1 disabled:opacity-50">
+              {loading ? "Creating..." : "Create Login"}
+            </button>
+            <button type="button" onClick={() => { setShowForm(false); setMessage(null); }} className="btn-secondary text-sm">
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// ─── Stacking Analysis Panel ───
+
+function StackingAnalysisPanel({ clientId }: { clientId: string }) {
+  const [running, setRunning] = useState(false);
+  const [analysisType, setAnalysisType] = useState<"stacking" | "revenue">("stacking");
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState("");
+  const [showConfirmSend, setShowConfirmSend] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  // Manual credit data inputs for stacking
+  const [scores, setScores] = useState({ experian: "", equifax: "", transUnion: "" });
+  const [inquiries, setInquiries] = useState({ experian: "0", equifax: "0", transUnion: "0" });
+  const [creditAge, setCreditAge] = useState("3");
+  const [existingBanks, setExistingBanks] = useState("");
+
+  // Revenue inputs
+  const [monthlyRevenue, setMonthlyRevenue] = useState("");
+  const [timeInBusiness, setTimeInBusiness] = useState("12");
+  const [hasBankStatements, setHasBankStatements] = useState(true);
+  const [hasTaxReturns, setHasTaxReturns] = useState(false);
+
+  async function runAnalysis() {
+    setRunning(true);
+    setError("");
+    setResult(null);
+
+    try {
+      if (analysisType === "stacking") {
+        const creditData = await parseManualCreditData({
+          experianScore: scores.experian ? parseInt(scores.experian) : null,
+          equifaxScore: scores.equifax ? parseInt(scores.equifax) : null,
+          transUnionScore: scores.transUnion ? parseInt(scores.transUnion) : null,
+          experianInquiries: parseInt(inquiries.experian) || 0,
+          equifaxInquiries: parseInt(inquiries.equifax) || 0,
+          transUnionInquiries: parseInt(inquiries.transUnion) || 0,
+          creditAgeYears: parseFloat(creditAge) || 0,
+          existingBanks: existingBanks.split(",").map((b) => b.trim()).filter(Boolean),
+          personalCardLimits: [],
+          derogatoryAccounts: 0,
+          totalAccounts: 0,
+        });
+        const res = await runStackingAnalysis(clientId, creditData);
+        setResult(res);
+      } else {
+        const res = await runRevenueLendingAnalysis(clientId, {
+          creditScore: scores.experian ? parseInt(scores.experian) : null,
+          monthlyRevenue: parseFloat(monthlyRevenue) || 0,
+          annualRevenue: (parseFloat(monthlyRevenue) || 0) * 12,
+          timeInBusinessMonths: parseInt(timeInBusiness) || 0,
+          hasCollateral: false,
+          hasBankStatements,
+          bankStatementMonths: hasBankStatements ? 3 : 0,
+          hasTaxReturns,
+          hasPnL: false,
+          hasInvoices: false,
+          fundingPurpose: "",
+          fundingAmountNeeded: 0,
+          industry: "",
+        });
+        setResult(res);
+      }
+    } catch (err: any) {
+      setError(err.message || "Analysis failed");
+    }
+    setRunning(false);
+  }
+
+  async function handleSendToClient() {
+    if (!result?.analysis?.id) return;
+    setSending(true);
+    try {
+      await sendBlueprintToClient(result.analysis.id);
+      setShowConfirmSend(false);
+      alert("Blueprint sent to client successfully!");
+    } catch (err: any) {
+      alert(err.message || "Failed to send");
+    }
+    setSending(false);
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-5">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-9 h-9 bg-brand-100 rounded-lg flex items-center justify-center">
+          <svg className="w-5 h-5 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="font-semibold text-gray-900">AI Funding Analysis</h3>
+          <p className="text-xs text-gray-500">Generate credit stacking blueprint or revenue-based lending matches</p>
+        </div>
+      </div>
+
+      {/* Type selector */}
+      <div className="flex bg-gray-100 rounded-lg p-1 mb-4">
+        <button
+          onClick={() => setAnalysisType("stacking")}
+          className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${analysisType === "stacking" ? "bg-white text-brand-700 shadow-sm" : "text-gray-500"}`}
+        >
+          Credit Card Stacking
+        </button>
+        <button
+          onClick={() => setAnalysisType("revenue")}
+          className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${analysisType === "revenue" ? "bg-white text-brand-700 shadow-sm" : "text-gray-500"}`}
+        >
+          Revenue-Based Lending
+        </button>
+      </div>
+
+      {/* Inputs */}
+      {analysisType === "stacking" ? (
+        <div className="space-y-3 mb-4">
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="text-xs text-gray-500">Experian</label>
+              <input className="input-field text-sm" type="number" placeholder="Score" value={scores.experian} onChange={(e) => setScores({ ...scores, experian: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Equifax</label>
+              <input className="input-field text-sm" type="number" placeholder="Score" value={scores.equifax} onChange={(e) => setScores({ ...scores, equifax: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">TransUnion</label>
+              <input className="input-field text-sm" type="number" placeholder="Score" value={scores.transUnion} onChange={(e) => setScores({ ...scores, transUnion: e.target.value })} />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="text-xs text-gray-500">EX Inquiries</label>
+              <input className="input-field text-sm" type="number" value={inquiries.experian} onChange={(e) => setInquiries({ ...inquiries, experian: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">EQ Inquiries</label>
+              <input className="input-field text-sm" type="number" value={inquiries.equifax} onChange={(e) => setInquiries({ ...inquiries, equifax: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">TU Inquiries</label>
+              <input className="input-field text-sm" type="number" value={inquiries.transUnion} onChange={(e) => setInquiries({ ...inquiries, transUnion: e.target.value })} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-gray-500">Credit Age (years)</label>
+              <input className="input-field text-sm" type="number" value={creditAge} onChange={(e) => setCreditAge(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Existing Banks</label>
+              <input className="input-field text-sm" placeholder="Chase, Amex, BOA..." value={existingBanks} onChange={(e) => setExistingBanks(e.target.value)} />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3 mb-4">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-gray-500">Monthly Revenue</label>
+              <input className="input-field text-sm" type="number" placeholder="$" value={monthlyRevenue} onChange={(e) => setMonthlyRevenue(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Time in Business (months)</label>
+              <input className="input-field text-sm" type="number" value={timeInBusiness} onChange={(e) => setTimeInBusiness(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-gray-500">Credit Score (optional)</label>
+              <input className="input-field text-sm" type="number" placeholder="Any bureau" value={scores.experian} onChange={(e) => setScores({ ...scores, experian: e.target.value })} />
+            </div>
+            <div className="flex items-end gap-3 pb-1">
+              <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                <input type="checkbox" checked={hasBankStatements} onChange={(e) => setHasBankStatements(e.target.checked)} className="rounded" />
+                Bank Statements
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                <input type="checkbox" checked={hasTaxReturns} onChange={(e) => setHasTaxReturns(e.target.checked)} className="rounded" />
+                Tax Returns
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {error && <div className="mb-3 p-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-200">{error}</div>}
+
+      <button
+        onClick={runAnalysis}
+        disabled={running}
+        className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50"
+      >
+        {running ? (
+          <>
+            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            Analyzing...
+          </>
+        ) : (
+          <>Run {analysisType === "stacking" ? "Stacking" : "Lending"} Analysis</>
+        )}
+      </button>
+
+      {/* Results */}
+      {result && (
+        <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <p className="text-sm text-gray-700 mb-3">{result.analysis?.summary || result.blueprint?.summary}</p>
+          {result.analysis?.totalProjected > 0 && (
+            <p className="text-lg font-bold text-emerald-600 mb-3">
+              Projected: ${result.analysis.totalProjected.toLocaleString()}
+            </p>
+          )}
+
+          {/* Cross-sell credit repair */}
+          {result.crossSellCreditRepair && (
+            <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+              <strong>Credit Repair Recommended:</strong> {result.creditRepairMessage}
+            </div>
+          )}
+
+          {/* Send to client button */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowConfirmSend(true)}
+              className="btn-secondary text-sm flex-1"
+            >
+              Send Blueprint to Client
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation popup */}
+      {showConfirmSend && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Confirm Send</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-6">
+              If you are running the applications on behalf of the client, are you sure you want to send the funding blueprint to the client?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleSendToClient}
+                disabled={sending}
+                className="btn-primary flex-1 disabled:opacity-50"
+              >
+                {sending ? "Sending..." : "Yes, Send to Client"}
+              </button>
+              <button
+                onClick={() => setShowConfirmSend(false)}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

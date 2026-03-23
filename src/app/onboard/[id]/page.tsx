@@ -2,8 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Client } from "@/lib/types";
-import { getClient, upsertClient } from "@/lib/store";
+import {
+  getClientForOnboarding,
+  submitAgreement as submitAgreementAction,
+  submitBusinessForm as submitBusinessFormAction,
+  submitCreditMonitoring as submitCreditMonitoringAction,
+} from "@/lib/onboarding-actions";
 
 type Step = "agreement" | "business" | "credit" | "complete";
 
@@ -20,7 +24,8 @@ const CREDIT_PROVIDERS = [
 export default function ClientOnboardingPage() {
   const params = useParams();
   const router = useRouter();
-  const [client, setClient] = useState<Client | null>(null);
+  const [client, setClient] = useState<Awaited<ReturnType<typeof getClientForOnboarding>> | null>(null);
+  const [clientId, setClientId] = useState<string>("");
   const [step, setStep] = useState<Step>("agreement");
   const [loading, setLoading] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -67,62 +72,64 @@ export default function ClientOnboardingPage() {
   const [creditActive, setCreditActive] = useState(false);
 
   useEffect(() => {
-    const c = getClient(params.id as string);
-    if (!c) {
+    async function load() {
+      const id = params.id as string;
+      setClientId(id);
+      const c = await getClientForOnboarding(id);
+      if (!c) {
+        setLoading(false);
+        return;
+      }
+      setClient(c);
+
+      // Pre-fill from existing client data
+      setPersonal({
+        firstName: c.firstName || "",
+        lastName: c.lastName || "",
+        email: c.email || "",
+        phone: c.phone || "",
+        ssn: c.ssn || "",
+        dateOfBirth: c.dateOfBirth || "",
+        address: c.address || "",
+        city: c.city || "",
+        state: c.state || "",
+        zip: c.zip || "",
+      });
+      setBusiness({
+        businessName: c.businessName || "",
+        businessAge: c.businessAge || "",
+        naicsCode: c.naicsCode || "",
+        sicCode: c.sicCode || "",
+        ein: c.ein || "",
+        businessAddress: c.businessAddress || "",
+        businessPhone: c.businessPhone || "",
+        annualRevenue: c.annualRevenue || "",
+        entityType: c.entityType || "",
+        stateOfIncorporation: c.stateOfIncorporation || "",
+      });
+      setAgreementName(
+        `${c.firstName} ${c.lastName}`.trim()
+      );
+
+      // Pre-fill credit monitoring
+      if (c.creditMonitoringProvider) setCreditProvider(c.creditMonitoringProvider);
+      if (c.creditMonitoringUsername) setCreditUsername(c.creditMonitoringUsername);
+      if (c.creditMonitoringStatus === "active") setCreditActive(true);
+
+      // Jump to the right step based on progress
+      let steps = { agreement: false, businessForm: false, creditMonitoring: false };
+      try { steps = JSON.parse(c.onboardingCompletedSteps || "{}"); } catch {}
+      if (steps.agreement && steps.businessForm && steps.creditMonitoring) {
+        setStep("complete");
+      } else if (steps.agreement && steps.businessForm) {
+        setStep("credit");
+      } else if (steps.agreement) {
+        setStep("business");
+      }
+
       setLoading(false);
-      return;
     }
-    setClient(c);
-
-    // Pre-fill from existing client data
-    setPersonal({
-      firstName: c.personalInfo.firstName || "",
-      lastName: c.personalInfo.lastName || "",
-      email: c.personalInfo.email || "",
-      phone: c.personalInfo.phone || "",
-      ssn: c.personalInfo.ssn || "",
-      dateOfBirth: c.personalInfo.dateOfBirth || "",
-      address: c.personalInfo.address || "",
-      city: c.personalInfo.city || "",
-      state: c.personalInfo.state || "",
-      zip: c.personalInfo.zip || "",
-    });
-    setBusiness({
-      businessName: c.businessInfo.businessName || "",
-      businessAge: c.businessInfo.businessAge || "",
-      naicsCode: c.businessInfo.naicsCode || "",
-      sicCode: c.businessInfo.sicCode || "",
-      ein: c.businessInfo.ein || "",
-      businessAddress: c.businessInfo.businessAddress || "",
-      businessPhone: c.businessInfo.businessPhone || "",
-      annualRevenue: c.businessInfo.annualRevenue || "",
-      entityType: c.businessInfo.entityType || "",
-      stateOfIncorporation: c.businessInfo.stateOfIncorporation || "",
-    });
-    setAgreementName(
-      `${c.personalInfo.firstName} ${c.personalInfo.lastName}`.trim()
-    );
-
-    // Pre-fill credit monitoring
-    if (c.creditMonitoringProvider) setCreditProvider(c.creditMonitoringProvider);
-    if (c.creditMonitoringUsername) setCreditUsername(c.creditMonitoringUsername);
-    if (c.creditMonitoringStatus === "active") setCreditActive(true);
-
-    // Jump to the right step based on progress
-    const steps = c.onboardingCompletedSteps || {
-      agreement: false,
-      businessForm: false,
-      creditMonitoring: false,
-    };
-    if (steps.agreement && steps.businessForm && steps.creditMonitoring) {
-      setStep("complete");
-    } else if (steps.agreement && steps.businessForm) {
-      setStep("credit");
-    } else if (steps.agreement) {
-      setStep("business");
-    }
-
-    setLoading(false);
+    load();
   }, [params.id]);
 
   // Canvas signature drawing
@@ -188,7 +195,7 @@ export default function ClientOnboardingPage() {
     return canvasRef.current.toDataURL("image/png");
   }
 
-  function submitAgreement() {
+  async function handleSubmitAgreement() {
     if (!client) return;
     if (!agreementName.trim()) {
       alert("Please enter your full legal name.");
@@ -203,102 +210,42 @@ export default function ClientOnboardingPage() {
       return;
     }
 
-    const updated: Client = {
-      ...client,
-      agreementSignature: {
-        fullName: agreementName,
-        signatureData: getSignatureData(),
-        dateSigned: new Date().toISOString(),
-        ipAddress: "client-local",
-      },
-      onboardingStatus: "agreement_signed",
-      onboardingCompletedSteps: {
-        ...(client.onboardingCompletedSteps || {
-          agreement: false,
-          businessForm: false,
-          creditMonitoring: false,
-        }),
-        agreement: true,
-      },
-    };
-    upsertClient(updated);
+    await submitAgreementAction(clientId, {
+      fullName: agreementName,
+      signatureData: getSignatureData(),
+      dateSigned: new Date().toISOString(),
+    });
+    const updated = await getClientForOnboarding(clientId);
     setClient(updated);
     setStep("business");
   }
 
-  function submitBusinessForm() {
+  async function handleSubmitBusinessForm() {
     if (!client) return;
     if (!personal.firstName || !personal.lastName || !personal.email) {
       alert("Please fill in at least your first name, last name, and email.");
       return;
     }
 
-    const updated: Client = {
-      ...client,
-      personalInfo: {
-        ...client.personalInfo,
-        firstName: personal.firstName,
-        lastName: personal.lastName,
-        email: personal.email,
-        phone: personal.phone,
-        ssn: personal.ssn,
-        dateOfBirth: personal.dateOfBirth,
-        address: personal.address,
-        city: personal.city,
-        state: personal.state,
-        zip: personal.zip,
-      },
-      businessInfo: {
-        businessName: business.businessName,
-        businessAge: business.businessAge,
-        naicsCode: business.naicsCode,
-        sicCode: business.sicCode,
-        ein: business.ein,
-        businessAddress: business.businessAddress,
-        businessPhone: business.businessPhone,
-        annualRevenue: business.annualRevenue,
-        entityType: business.entityType,
-        stateOfIncorporation: business.stateOfIncorporation,
-      },
-      onboardingCompletedSteps: {
-        ...(client.onboardingCompletedSteps || {
-          agreement: false,
-          businessForm: false,
-          creditMonitoring: false,
-        }),
-        businessForm: true,
-      },
-    };
-    upsertClient(updated);
+    await submitBusinessFormAction(clientId, personal, business);
+    const updated = await getClientForOnboarding(clientId);
     setClient(updated);
     setStep("credit");
   }
 
-  function submitCreditMonitoring() {
+  async function handleSubmitCreditMonitoring() {
     if (!client) return;
     if (!creditProvider) {
       alert("Please select a credit monitoring provider.");
       return;
     }
 
-    const updated: Client = {
-      ...client,
-      creditMonitoringStatus: creditActive ? "active" : "pending",
-      creditMonitoringProvider: creditProvider,
-      creditMonitoringUsername: creditUsername,
-      creditMonitoringPassword: creditPassword,
-      onboardingStatus: "active",
-      onboardedAt: client.onboardedAt || new Date().toISOString(),
-      onboardingCompletedSteps: {
-        ...(client.onboardingCompletedSteps || {
-          agreement: false,
-          businessForm: false,
-          creditMonitoring: false,
-        }),
-        creditMonitoring: true,
-      },
-    };
-    upsertClient(updated);
+    await submitCreditMonitoringAction(clientId, {
+      provider: creditProvider,
+      username: creditUsername,
+      password: creditPassword,
+    });
+    const updated = await getClientForOnboarding(clientId);
     setClient(updated);
     setStep("complete");
   }
@@ -347,7 +294,7 @@ export default function ClientOnboardingPage() {
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">
-            Welcome, {client.personalInfo.firstName || "Client"}!
+            Welcome, {client.firstName || "Client"}!
           </h1>
           <p className="text-gray-500 mt-1">
             Complete the steps below to get started with your funding process
@@ -530,7 +477,7 @@ export default function ClientOnboardingPage() {
 
               <div className="flex justify-end">
                 <button
-                  onClick={submitAgreement}
+                  onClick={handleSubmitAgreement}
                   disabled={!agreementAccepted || !agreementName || !hasSignature}
                   className="btn-primary px-8 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -664,7 +611,7 @@ export default function ClientOnboardingPage() {
               </div>
 
               <div className="flex justify-end">
-                <button onClick={submitBusinessForm} className="btn-primary px-8">
+                <button onClick={handleSubmitBusinessForm} className="btn-primary px-8">
                   Save &amp; Continue
                 </button>
               </div>
@@ -744,7 +691,7 @@ export default function ClientOnboardingPage() {
 
               <div className="flex justify-end">
                 <button
-                  onClick={submitCreditMonitoring}
+                  onClick={handleSubmitCreditMonitoring}
                   disabled={!creditProvider}
                   className="btn-primary px-8 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -766,7 +713,7 @@ export default function ClientOnboardingPage() {
             <div>
               <h2 className="text-2xl font-bold text-gray-900">Onboarding Complete!</h2>
               <p className="text-gray-500 mt-2 max-w-md mx-auto">
-                Thank you, <strong>{client.personalInfo.firstName}</strong>! Your information has been submitted
+                Thank you, <strong>{client.firstName}</strong>! Your information has been submitted
                 successfully. Your funding team will review your details and begin working on your funding strategy.
               </p>
             </div>

@@ -1,47 +1,54 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateTable
 CREATE TABLE "Agency" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
     "brandName" TEXT NOT NULL DEFAULT '',
     "brandLogo" TEXT NOT NULL DEFAULT '',
     "brandFavicon" TEXT NOT NULL DEFAULT '',
     "primaryColor" TEXT NOT NULL DEFAULT '#3b82f6',
-    "customDomain" TEXT NOT NULL DEFAULT ''
+    "customDomain" TEXT NOT NULL DEFAULT '',
+
+    CONSTRAINT "Agency_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "SubAccount" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "agencyId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "SubAccount_agencyId_fkey" FOREIGN KEY ("agencyId") REFERENCES "Agency" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "SubAccount_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "User" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "passwordHash" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "role" TEXT NOT NULL DEFAULT 'ACCOUNT_ADMIN',
     "agencyId" TEXT,
     "subAccountId" TEXT,
-    "lastLoginAt" DATETIME,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "User_agencyId_fkey" FOREIGN KEY ("agencyId") REFERENCES "Agency" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "User_subAccountId_fkey" FOREIGN KEY ("subAccountId") REFERENCES "SubAccount" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "clientId" TEXT,
+    "lastLoginAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Client" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "subAccountId" TEXT NOT NULL,
     "firstName" TEXT NOT NULL DEFAULT '',
     "lastName" TEXT NOT NULL DEFAULT '',
@@ -68,8 +75,8 @@ CREATE TABLE "Client" (
     "onboardedAt" TEXT,
     "onboardingEmailSentAt" TEXT,
     "onboardingCompletedSteps" TEXT NOT NULL DEFAULT '{"agreement":false,"businessForm":false,"creditMonitoring":false}',
-    "totalFunded" REAL NOT NULL DEFAULT 0,
-    "totalApproved" REAL NOT NULL DEFAULT 0,
+    "totalFunded" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalApproved" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "notes" TEXT NOT NULL DEFAULT '',
     "agreementSignature" TEXT,
     "creditMonitoringStatus" TEXT NOT NULL DEFAULT 'not_started',
@@ -77,33 +84,35 @@ CREATE TABLE "Client" (
     "creditMonitoringUsername" TEXT NOT NULL DEFAULT '',
     "creditMonitoringPassword" TEXT NOT NULL DEFAULT '',
     "referralPartner" TEXT NOT NULL DEFAULT '',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "Client_subAccountId_fkey" FOREIGN KEY ("subAccountId") REFERENCES "SubAccount" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Client_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "FundingApplication" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "clientId" TEXT NOT NULL,
     "type" TEXT NOT NULL,
     "lender" TEXT NOT NULL DEFAULT '',
     "product" TEXT NOT NULL DEFAULT '',
-    "amount" REAL,
+    "amount" DOUBLE PRECISION,
     "status" TEXT NOT NULL DEFAULT 'pending',
     "appliedDate" TEXT NOT NULL DEFAULT '',
     "approvedDate" TEXT,
     "fundedDate" TEXT,
     "notes" TEXT NOT NULL DEFAULT '',
     "sortOrder" INTEGER NOT NULL DEFAULT 0,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "FundingApplication_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "FundingApplication_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Document" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "clientId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "type" TEXT NOT NULL DEFAULT '',
@@ -113,24 +122,26 @@ CREATE TABLE "Document" (
     "fileData" TEXT NOT NULL DEFAULT '',
     "fileSize" INTEGER NOT NULL DEFAULT 0,
     "source" TEXT NOT NULL DEFAULT 'admin',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "Document_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Document_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "ActivityEntry" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "clientId" TEXT NOT NULL,
     "timestamp" TEXT NOT NULL,
     "type" TEXT NOT NULL,
     "message" TEXT NOT NULL,
     "details" TEXT,
-    CONSTRAINT "ActivityEntry_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+
+    CONSTRAINT "ActivityEntry_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "Lender" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "subAccountId" TEXT NOT NULL,
     "name" TEXT NOT NULL DEFAULT '',
     "logo" TEXT NOT NULL DEFAULT '',
@@ -142,14 +153,14 @@ CREATE TABLE "Lender" (
     "status" TEXT NOT NULL DEFAULT 'disconnected',
     "supportedProducts" TEXT NOT NULL DEFAULT '[]',
     "minCreditScore" INTEGER,
-    "maxLoanAmount" REAL,
-    "minLoanAmount" REAL,
+    "maxLoanAmount" DOUBLE PRECISION,
+    "minLoanAmount" DOUBLE PRECISION,
     "interestRateRange" TEXT NOT NULL DEFAULT '',
     "termRange" TEXT NOT NULL DEFAULT '',
     "avgApprovalTime" TEXT NOT NULL DEFAULT '',
-    "totalFunded" REAL NOT NULL DEFAULT 0,
+    "totalFunded" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "totalDeals" INTEGER NOT NULL DEFAULT 0,
-    "approvalRate" REAL,
+    "approvalRate" DOUBLE PRECISION,
     "contactName" TEXT NOT NULL DEFAULT '',
     "contactEmail" TEXT NOT NULL DEFAULT '',
     "contactPhone" TEXT NOT NULL DEFAULT '',
@@ -158,18 +169,20 @@ CREATE TABLE "Lender" (
     "lastSyncAt" TEXT,
     "webhookUrl" TEXT NOT NULL DEFAULT '',
     "sandboxMode" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "Lender_subAccountId_fkey" FOREIGN KEY ("subAccountId") REFERENCES "SubAccount" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Lender_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "ReferralPartner" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "subAccountId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "ReferralPartner_subAccountId_fkey" FOREIGN KEY ("subAccountId") REFERENCES "SubAccount" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ReferralPartner_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -182,4 +195,38 @@ CREATE UNIQUE INDEX "SubAccount_agencyId_slug_key" ON "SubAccount"("agencyId", "
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "User_clientId_key" ON "User"("clientId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "ReferralPartner_subAccountId_name_key" ON "ReferralPartner"("subAccountId", "name");
+
+-- AddForeignKey
+ALTER TABLE "SubAccount" ADD CONSTRAINT "SubAccount_agencyId_fkey" FOREIGN KEY ("agencyId") REFERENCES "Agency"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "User" ADD CONSTRAINT "User_agencyId_fkey" FOREIGN KEY ("agencyId") REFERENCES "Agency"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "User" ADD CONSTRAINT "User_subAccountId_fkey" FOREIGN KEY ("subAccountId") REFERENCES "SubAccount"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "User" ADD CONSTRAINT "User_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Client" ADD CONSTRAINT "Client_subAccountId_fkey" FOREIGN KEY ("subAccountId") REFERENCES "SubAccount"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FundingApplication" ADD CONSTRAINT "FundingApplication_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Document" ADD CONSTRAINT "Document_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ActivityEntry" ADD CONSTRAINT "ActivityEntry_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Lender" ADD CONSTRAINT "Lender_subAccountId_fkey" FOREIGN KEY ("subAccountId") REFERENCES "SubAccount"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ReferralPartner" ADD CONSTRAINT "ReferralPartner_subAccountId_fkey" FOREIGN KEY ("subAccountId") REFERENCES "SubAccount"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+

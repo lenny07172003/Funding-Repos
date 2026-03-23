@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createEmptyClient, upsertClient } from "@/lib/store";
+import { createClient } from "@/lib/client-actions";
 
 export default function OnboardPage() {
   const router = useRouter();
@@ -25,16 +25,16 @@ export default function OnboardPage() {
     setStep("agreement");
   }
 
-  function handleComplete() {
-    const client = createEmptyClient();
-    client.personalInfo.firstName = form.firstName;
-    client.personalInfo.lastName = form.lastName;
-    client.personalInfo.email = form.email;
-    client.personalInfo.phone = form.phone;
-    client.businessInfo.businessName = form.businessName;
-    client.onboardingStatus = agreementAccepted ? "agreement_signed" : "agreement_sent";
-    client.onboardedAt = new Date().toISOString();
-    upsertClient(client);
+  async function handleComplete() {
+    const client = await createClient({
+      firstName: form.firstName,
+      lastName: form.lastName,
+      email: form.email,
+      phone: form.phone,
+      businessName: form.businessName,
+      onboardingStatus: agreementAccepted ? "agreement_signed" : "agreement_sent",
+      onboardedAt: new Date().toISOString(),
+    });
     setClientId(client.id);
     setStep("complete");
   }

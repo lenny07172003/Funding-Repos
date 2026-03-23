@@ -1,85 +1,36 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { getMyProfile } from "@/lib/client-portal-actions";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
-interface ProfileData {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  dateOfBirth: string;
-  address: string;
-  city: string;
-  state: string;
-  zip: string;
-  businessName: string;
-  businessAge: string;
-  naicsCode: string;
-  sicCode: string;
-  ein: string;
-  businessAddress: string;
-  businessPhone: string;
-  annualRevenue: string;
-  entityType: string;
-  stateOfIncorporation: string;
-}
-
-const STORAGE_KEY = "funding_crm_client_profile";
+type ProfileData = Awaited<ReturnType<typeof getMyProfile>>;
 
 export default function ProfilePage() {
-  const [profile, setProfile] = useState<ProfileData>({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-    dateOfBirth: "",
-    address: "",
-    city: "",
-    state: "",
-    zip: "",
-    businessName: "",
-    businessAge: "",
-    naicsCode: "",
-    sicCode: "",
-    ein: "",
-    businessAddress: "",
-    businessPhone: "",
-    annualRevenue: "",
-    entityType: "",
-    stateOfIncorporation: "",
-  });
-  const [saved, setSaved] = useState(false);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
+    async function load() {
       try {
-        setProfile(JSON.parse(raw));
-      } catch {}
+        const data = await getMyProfile();
+        setProfile(data);
+      } catch {
+        // Profile load failed — will show error state
+      }
+      setLoading(false);
     }
+    load();
   }, []);
 
-  function handleChange(field: keyof ProfileData, value: string) {
-    setProfile((p) => ({ ...p, [field]: value }));
-    setSaved(false);
-  }
-
-  function handleSave() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
-  }
+  if (loading) return <LoadingSpinner message="Loading profile..." />;
+  if (!profile) return <div className="p-8 text-center text-gray-400">Unable to load profile.</div>;
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
-          <p className="text-gray-500 mt-1">Update your personal and business information</p>
-        </div>
-        <button onClick={handleSave} className="btn-primary self-start sm:self-auto">
-          {saved ? "Saved!" : "Save Changes"}
-        </button>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
+        <p className="text-gray-500 mt-1">Your personal and business information</p>
       </div>
 
       {/* Personal Information */}
@@ -91,42 +42,15 @@ export default function ProfilePage() {
           Personal Information
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div>
-            <label className="label">First Name</label>
-            <input className="input-field" value={profile.firstName} onChange={(e) => handleChange("firstName", e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Last Name</label>
-            <input className="input-field" value={profile.lastName} onChange={(e) => handleChange("lastName", e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Email</label>
-            <input className="input-field" type="email" value={profile.email} onChange={(e) => handleChange("email", e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Phone</label>
-            <input className="input-field" type="tel" value={profile.phone} onChange={(e) => handleChange("phone", e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Date of Birth</label>
-            <input className="input-field" type="date" value={profile.dateOfBirth} onChange={(e) => handleChange("dateOfBirth", e.target.value)} />
-          </div>
-          <div className="md:col-span-2 lg:col-span-1">
-            <label className="label">Address</label>
-            <input className="input-field" value={profile.address} onChange={(e) => handleChange("address", e.target.value)} />
-          </div>
-          <div>
-            <label className="label">City</label>
-            <input className="input-field" value={profile.city} onChange={(e) => handleChange("city", e.target.value)} />
-          </div>
-          <div>
-            <label className="label">State</label>
-            <input className="input-field" value={profile.state} onChange={(e) => handleChange("state", e.target.value)} />
-          </div>
-          <div>
-            <label className="label">ZIP Code</label>
-            <input className="input-field" value={profile.zip} onChange={(e) => handleChange("zip", e.target.value)} />
-          </div>
+          <Field label="First Name" value={profile.firstName} />
+          <Field label="Last Name" value={profile.lastName} />
+          <Field label="Email" value={profile.email} />
+          <Field label="Phone" value={profile.phone} />
+          <Field label="Date of Birth" value={profile.dateOfBirth} />
+          <Field label="Address" value={profile.address} />
+          <Field label="City" value={profile.city} />
+          <Field label="State" value={profile.state} />
+          <Field label="ZIP Code" value={profile.zip} />
         </div>
       </div>
 
@@ -139,55 +63,28 @@ export default function ProfilePage() {
           Business Information
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div>
-            <label className="label">Business Name</label>
-            <input className="input-field" value={profile.businessName} onChange={(e) => handleChange("businessName", e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Business Age</label>
-            <input className="input-field" placeholder="e.g. 2 years" value={profile.businessAge} onChange={(e) => handleChange("businessAge", e.target.value)} />
-          </div>
-          <div>
-            <label className="label">EIN</label>
-            <input className="input-field" value={profile.ein} onChange={(e) => handleChange("ein", e.target.value)} />
-          </div>
-          <div>
-            <label className="label">NAICS Code</label>
-            <input className="input-field" value={profile.naicsCode} onChange={(e) => handleChange("naicsCode", e.target.value)} />
-          </div>
-          <div>
-            <label className="label">SIC Code</label>
-            <input className="input-field" value={profile.sicCode} onChange={(e) => handleChange("sicCode", e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Entity Type</label>
-            <select className="input-field" value={profile.entityType} onChange={(e) => handleChange("entityType", e.target.value)}>
-              <option value="">Select...</option>
-              <option value="sole_proprietorship">Sole Proprietorship</option>
-              <option value="llc">LLC</option>
-              <option value="corporation">Corporation</option>
-              <option value="s_corp">S-Corp</option>
-              <option value="partnership">Partnership</option>
-            </select>
-          </div>
-          <div>
-            <label className="label">State of Incorporation</label>
-            <input className="input-field" value={profile.stateOfIncorporation} onChange={(e) => handleChange("stateOfIncorporation", e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Annual Revenue</label>
-            <input className="input-field" placeholder="e.g. $150,000" value={profile.annualRevenue} onChange={(e) => handleChange("annualRevenue", e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Business Phone</label>
-            <input className="input-field" type="tel" value={profile.businessPhone} onChange={(e) => handleChange("businessPhone", e.target.value)} />
-          </div>
-          <div className="md:col-span-2 lg:col-span-3">
-            <label className="label">Business Address</label>
-            <input className="input-field" value={profile.businessAddress} onChange={(e) => handleChange("businessAddress", e.target.value)} />
-          </div>
+          <Field label="Business Name" value={profile.businessName} />
+          <Field label="Business Age" value={profile.businessAge} />
+          <Field label="EIN" value={profile.ein} />
+          <Field label="Entity Type" value={profile.entityType} />
+          <Field label="Annual Revenue" value={profile.annualRevenue} />
         </div>
       </div>
+
+      <div className="card p-4 bg-brand-50 border-brand-200">
+        <p className="text-sm text-brand-700">
+          <strong>Need to update your information?</strong> Contact your funding representative to make changes to your profile.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</label>
+      <p className="mt-1 text-gray-900 font-medium">{value || "—"}</p>
     </div>
   );
 }
