@@ -48,8 +48,7 @@ export default function SettingsPage() {
 
   const roleLabels: Record<string, string> = {
     SUPER_ADMIN: "Super Admin",
-    AGENCY_ADMIN: "Agency Admin",
-    ACCOUNT_ADMIN: "Account Admin",
+    ACCOUNT_ADMIN: "Admin",
   };
 
   return (
@@ -77,15 +76,9 @@ export default function SettingsPage() {
               {roleLabels[user?.role] || user?.role}
             </span>
           </div>
-          {user?.agencyName && (
-            <div className="flex items-center justify-between py-2 border-b border-gray-100">
-              <span className="text-sm text-gray-500">Agency</span>
-              <span className="text-sm font-medium text-gray-900">{user.agencyName}</span>
-            </div>
-          )}
           {user?.subAccountName && (
             <div className="flex items-center justify-between py-2">
-              <span className="text-sm text-gray-500">Sub-Account</span>
+              <span className="text-sm text-gray-500">Account</span>
               <span className="text-sm font-medium text-gray-900">{user.subAccountName}</span>
             </div>
           )}
