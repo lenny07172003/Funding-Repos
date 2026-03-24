@@ -47,8 +47,12 @@ type AgreementSignature = {
   signatureData: string;
   dateSigned: string;
   timeSigned?: string;
+  completedAt?: string;
   ipAddress: string;
   agreementVersion?: number;
+  agreementTitle?: string;
+  agreementContent?: string;
+  companyName?: string;
 } | null;
 
 type OnboardingSteps = {
@@ -1348,6 +1352,9 @@ export default function ClientDetailPage() {
                   />
                 </div>
               )}
+
+              {/* View Full Signed Agreement */}
+              <AgreementViewer agreement={client._agreementSignature} />
             </div>
           ) : client.agreementSentAt ? (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
@@ -1903,6 +1910,129 @@ function ClientLoginPanel({ clientId, clientEmail, onCreated }: { clientId: stri
             </button>
           </div>
         </form>
+      )}
+    </div>
+  );
+}
+
+// ─── Full Signed Agreement Viewer ───
+
+function AgreementViewer({ agreement }: { agreement: AgreementSignature }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!agreement) return null;
+
+  return (
+    <div className="mt-4">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-900 transition-colors"
+      >
+        <svg className={`w-4 h-4 transition-transform ${expanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+        {expanded ? "Hide Full Signed Agreement" : "View Full Signed Agreement"}
+      </button>
+
+      {expanded && (
+        <div className="mt-3 bg-white border border-gray-200 rounded-xl overflow-hidden">
+          {/* Agreement Header */}
+          <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-gray-900">{agreement.agreementTitle || "Funding Agreement"}</h3>
+                {agreement.companyName && (
+                  <p className="text-sm text-gray-500">{agreement.companyName}</p>
+                )}
+              </div>
+              <div className="text-right">
+                <span className="bg-emerald-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">EXECUTED</span>
+                {agreement.agreementVersion && (
+                  <p className="text-xs text-gray-400 mt-1">Version {agreement.agreementVersion}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Agreement Content */}
+          {agreement.agreementContent ? (
+            <div className="px-6 py-6">
+              <div
+                className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: agreement.agreementContent }}
+              />
+            </div>
+          ) : (
+            <div className="px-6 py-6 text-sm text-gray-400 italic">
+              Agreement content was not captured at signing time. This applies to agreements signed before this feature was added.
+            </div>
+          )}
+
+          {/* Signature Block */}
+          <div className="border-t border-gray-200 bg-gray-50 px-6 py-6">
+            <h4 className="font-semibold text-gray-900 mb-4">Execution Details</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div>
+                <div className="space-y-3">
+                  <div>
+                    <span className="text-xs text-gray-500 block">Full Legal Name</span>
+                    <span className="text-sm font-semibold text-gray-900">{agreement.fullName}</span>
+                  </div>
+                  {agreement.businessName && (
+                    <div>
+                      <span className="text-xs text-gray-500 block">Business Name</span>
+                      <span className="text-sm font-semibold text-gray-900">{agreement.businessName}</span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-xs text-gray-500 block">Date of Signature</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {agreement.dateSigned ? new Date(agreement.dateSigned).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }) : "—"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-gray-500 block">Signed At (Timestamp)</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {agreement.timeSigned ? new Date(agreement.timeSigned).toLocaleString() : "—"}
+                    </span>
+                  </div>
+                  {agreement.completedAt && (
+                    <div>
+                      <span className="text-xs text-gray-500 block">Document Completed</span>
+                      <span className="text-sm font-semibold text-gray-900">
+                        {new Date(agreement.completedAt).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
+                {agreement.signatureData && (
+                  <div>
+                    <span className="text-xs text-gray-500 block mb-2">Electronic Signature</span>
+                    <div className="bg-white border border-gray-200 rounded-lg p-3 inline-block">
+                      <img
+                        src={agreement.signatureData}
+                        alt="Electronic signature"
+                        className="max-h-24"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Legal footer */}
+            <div className="mt-6 pt-4 border-t border-gray-200">
+              <p className="text-xs text-gray-400 leading-relaxed">
+                This document was electronically signed and is legally binding. The signatory confirmed they read and agreed to the terms above.
+                Signed electronically on {agreement.dateSigned ? new Date(agreement.dateSigned).toLocaleDateString() : "—"} at{" "}
+                {agreement.timeSigned ? new Date(agreement.timeSigned).toLocaleTimeString() : "—"}.
+                {agreement.agreementVersion && ` Agreement version ${agreement.agreementVersion}.`}
+              </p>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

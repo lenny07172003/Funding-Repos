@@ -171,10 +171,30 @@ export async function submitAgreementSignature(
     throw new Error("Full name and signature are required");
   }
 
-  const client = await prisma.client.findUnique({ where: { id: clientId } });
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    include: {
+      subAccount: {
+        include: {
+          agency: {
+            select: {
+              brandName: true,
+              name: true,
+              fundingAgreementTitle: true,
+              fundingAgreementContent: true,
+              fundingAgreementVersion: true,
+            },
+          },
+        },
+      },
+    },
+  });
   if (!client) throw new Error("Client not found");
 
+  const agency = client.subAccount?.agency;
   const now = new Date();
+
+  // Snapshot the FULL agreement at signing time — locked forever
   const signature = JSON.stringify({
     fullName: data.fullName.trim(),
     businessName: data.businessName.trim(),
@@ -182,8 +202,12 @@ export async function submitAgreementSignature(
     dateSigned: data.dateSigned,
     timeSigned: now.toISOString(),
     timestamp: now.getTime(),
+    completedAt: now.toISOString(),
     ipAddress: "client-web",
-    agreementVersion: 1,
+    agreementVersion: agency?.fundingAgreementVersion || 1,
+    agreementTitle: agency?.fundingAgreementTitle || "BUSINESS FUNDING SERVICES AGREEMENT",
+    agreementContent: agency?.fundingAgreementContent || "",
+    companyName: agency?.brandName || agency?.name || "",
   });
 
   await prisma.client.update({
