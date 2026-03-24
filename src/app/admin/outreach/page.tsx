@@ -6,6 +6,7 @@ import {
   createBankerProspect,
   updateBankerProspect,
   getOutreachStats,
+  getOutreachCampaigns,
   generateOutreachMessage,
   sendOutreachMessage,
   createOutreachCampaign,
@@ -80,7 +81,7 @@ export default function OutreachPage() {
     setGenerating(prospectId);
     try {
       // Get or create a default campaign
-      let campaigns = await (await import("@/lib/outreach-engine")).getOutreachCampaigns();
+      let campaigns = await getOutreachCampaigns();
       let campaign = campaigns[0];
       if (!campaign) {
         campaign = await createOutreachCampaign({

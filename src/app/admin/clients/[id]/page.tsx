@@ -17,6 +17,7 @@ import {
   getLenders,
   ensureLenderByName,
   createClientLogin,
+  updateDocumentStatus,
 } from "@/lib/client-actions";
 import { runStackingAnalysis, runRevenueLendingAnalysis, getClientAnalyses, sendBlueprintToClient } from "@/lib/funding-analysis";
 import { parseManualCreditData } from "@/lib/credit-report-parser";
@@ -1463,7 +1464,7 @@ export default function ClientDetailPage() {
                       className="input-field w-auto text-xs py-1"
                       value={doc.status}
                       onChange={async (e) => {
-                        await import("@/lib/client-actions").then((m) => m.updateDocumentStatus(doc.id, e.target.value));
+                        await updateDocumentStatus(doc.id, e.target.value);
                         await loadClient();
                         showSaved();
                       }}
