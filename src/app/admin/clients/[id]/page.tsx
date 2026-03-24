@@ -43,9 +43,12 @@ type CreditProfile = {
 
 type AgreementSignature = {
   fullName: string;
+  businessName?: string;
   signatureData: string;
   dateSigned: string;
+  timeSigned?: string;
   ipAddress: string;
+  agreementVersion?: number;
 } | null;
 
 type OnboardingSteps = {
@@ -1282,6 +1285,96 @@ export default function ClientDetailPage() {
 
         return (
         <div className="space-y-4">
+          {/* Signed Funding Agreement */}
+          {client._agreementSignature ? (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-5">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-emerald-900">Funding Agreement — Signed</h3>
+                    <p className="text-sm text-emerald-700 mt-0.5">
+                      Signed by <strong>{client._agreementSignature.fullName}</strong>
+                      {client._agreementSignature.businessName && <> for <strong>{client._agreementSignature.businessName}</strong></>}
+                    </p>
+                  </div>
+                </div>
+                <span className="bg-emerald-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">SIGNED</span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <span className="text-emerald-600 text-xs font-medium block mb-0.5">Full Name</span>
+                  <span className="text-emerald-900 font-medium">{client._agreementSignature.fullName}</span>
+                </div>
+                {client._agreementSignature.businessName && (
+                  <div>
+                    <span className="text-emerald-600 text-xs font-medium block mb-0.5">Business</span>
+                    <span className="text-emerald-900 font-medium">{client._agreementSignature.businessName}</span>
+                  </div>
+                )}
+                <div>
+                  <span className="text-emerald-600 text-xs font-medium block mb-0.5">Date Signed</span>
+                  <span className="text-emerald-900 font-medium">
+                    {client._agreementSignature.dateSigned
+                      ? new Date(client._agreementSignature.dateSigned).toLocaleDateString()
+                      : "—"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-emerald-600 text-xs font-medium block mb-0.5">Timestamp</span>
+                  <span className="text-emerald-900 font-medium">
+                    {client._agreementSignature.timeSigned
+                      ? new Date(client._agreementSignature.timeSigned).toLocaleString()
+                      : client.agreementSignedAt
+                      ? new Date(client.agreementSignedAt).toLocaleString()
+                      : "—"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Signature image */}
+              {client._agreementSignature.signatureData && (
+                <div className="mt-4 bg-white rounded-lg border border-emerald-200 p-3">
+                  <span className="text-xs text-emerald-600 font-medium block mb-2">Signature</span>
+                  <img
+                    src={client._agreementSignature.signatureData}
+                    alt="Client signature"
+                    className="max-h-20 border border-gray-100 rounded"
+                  />
+                </div>
+              )}
+            </div>
+          ) : client.agreementSentAt ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className="text-sm font-medium text-amber-800">Funding Agreement — Sent, Awaiting Signature</p>
+                  <p className="text-xs text-amber-600">
+                    Sent on {new Date(client.agreementSentAt).toLocaleString()}
+                    {client.agreementViewedAt && <> · Viewed {new Date(client.agreementViewedAt).toLocaleString()}</>}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <p className="text-sm text-gray-500">Funding Agreement — Not sent yet. Use the onboarding panel above to send.</p>
+              </div>
+            </div>
+          )}
+
           {/* Top Actions Bar */}
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-lg text-gray-900">Documents</h3>
