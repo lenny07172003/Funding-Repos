@@ -35,11 +35,23 @@ export interface CreditReportData {
     equifax: number;
     transUnion: number;
   };
-  creditAgeYears: number; // Average age of credit in years
-  existingBanks: string[]; // Banks/creditors found on the credit report
-  personalCardLimits: number[]; // Current personal card limits
+  creditAgeYears: number;
+  existingBanks: string[];
+  personalCardLimits: number[];
   derogatoryAccounts: number;
   totalAccounts: number;
+
+  // Negative items (expanded)
+  latePayments: number;
+  collections: number;
+  chargeOffs: number;
+  bankruptcies: number;
+  closedAccounts: number;
+  totalInquiries: number; // Sum across all bureaus
+
+  // Flags
+  hasNegativeItems: boolean; // true if any collections, charge-offs, bankruptcies, or late payments in last 2 years
+  needsCreditRepair: boolean; // true if negative items + high inquiries make them a credit repair candidate
 }
 
 // ─── Output Types ───

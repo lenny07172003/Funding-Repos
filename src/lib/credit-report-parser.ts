@@ -3,23 +3,17 @@
 import type { CreditReportData } from "./stacking-engine";
 
 /**
- * Credit Report Parser
+ * Credit Report Parser — Full Extraction
  *
- * Extracts credit data from:
- * 1. SmartCredit report exports
- * 2. Array (formerly CreditWorks) exports
- * 3. Manual PDF upload — text is extracted and parsed for key data points
- *
- * Key data extracted:
- * - Scores per bureau (Experian, Equifax, TransUnion)
- * - Inquiry count per bureau
- * - Average credit age in years
- * - List of existing creditors/banks
- * - Personal card limits
- * - Derogatory account count
+ * Extracts from credit reports (SmartCredit, Array, PDF):
+ * - Scores per bureau
+ * - Accounts, late payments, collections, charge-offs, bankruptcies
+ * - Closed accounts, inquiries per bureau
+ * - Existing banks/creditors
+ * - Credit age, personal card limits
+ * - Derogatory items detection
  */
 
-// Common bank/creditor name patterns to look for in credit reports
 const KNOWN_BANKS = [
   "chase", "jpmorgan", "american express", "amex", "bank of america", "boa",
   "wells fargo", "citibank", "citi", "capital one", "discover", "barclays",
@@ -27,13 +21,11 @@ const KNOWN_BANKS = [
   "navy federal", "usaa", "goldman sachs", "marcus", "synchrony",
   "fnbo", "first national", "elan", "valley national", "m&t bank",
   "bethpage", "teachers federal", "service credit union", "paypal",
-  "bhg", "apple card",
+  "bhg", "apple card", "ally", "sofi", "regions", "fifth third",
+  "huntington", "bmo", "santander", "webster", "ameris", "columbia",
+  "mercury", "relay", "novo", "bluevine",
 ];
 
-/**
- * Parse manually entered credit report data.
- * Used when admin enters scores/data directly or uploads a report.
- */
 export async function parseManualCreditData(input: {
   experianScore: number | null;
   equifaxScore: number | null;
@@ -46,7 +38,20 @@ export async function parseManualCreditData(input: {
   personalCardLimits: number[];
   derogatoryAccounts: number;
   totalAccounts: number;
+  latePayments?: number;
+  collections?: number;
+  chargeOffs?: number;
+  bankruptcies?: number;
+  closedAccounts?: number;
 }): Promise<CreditReportData> {
+  const totalInquiries = input.experianInquiries + input.equifaxInquiries + input.transUnionInquiries;
+  const latePayments = input.latePayments || 0;
+  const collections = input.collections || 0;
+  const chargeOffs = input.chargeOffs || 0;
+  const bankruptcies = input.bankruptcies || 0;
+  const hasNegativeItems = collections > 0 || chargeOffs > 0 || bankruptcies > 0 || latePayments > 0;
+  const needsCreditRepair = hasNegativeItems || totalInquiries > 16;
+
   return {
     scores: {
       experian: input.experianScore,
@@ -63,36 +68,36 @@ export async function parseManualCreditData(input: {
     personalCardLimits: input.personalCardLimits,
     derogatoryAccounts: input.derogatoryAccounts,
     totalAccounts: input.totalAccounts,
+    latePayments,
+    collections,
+    chargeOffs,
+    bankruptcies,
+    closedAccounts: input.closedAccounts || 0,
+    totalInquiries,
+    hasNegativeItems,
+    needsCreditRepair,
   };
 }
 
-/**
- * Parse credit report text content (extracted from PDF or pasted).
- * Looks for patterns matching scores, inquiries, account names, etc.
- */
 export async function parseCreditReportText(text: string): Promise<CreditReportData> {
   const normalizedText = text.toLowerCase();
 
-  // Extract scores
   const scores = extractScores(text);
-
-  // Extract inquiries
   const inquiries = extractInquiries(text);
-
-  // Extract existing banks/creditors
   const existingBanks = extractBanks(normalizedText);
-
-  // Extract credit age
   const creditAgeYears = extractCreditAge(text);
-
-  // Extract card limits
   const personalCardLimits = extractCardLimits(text);
-
-  // Extract derogatory count
   const derogatoryAccounts = extractDerogatoryCount(text);
-
-  // Extract total accounts
   const totalAccounts = extractTotalAccounts(text);
+  const latePayments = extractCount(normalizedText, /late\s*payment|past\s*due|30\s*day|60\s*day|90\s*day/gi);
+  const collections = extractCount(normalizedText, /collection|collect\s*acc/gi);
+  const chargeOffs = extractCount(normalizedText, /charge[\s-]*off|charged[\s-]*off/gi);
+  const bankruptcies = extractCount(normalizedText, /bankrupt/gi);
+  const closedAccounts = extractCount(normalizedText, /closed|account\s*closed/gi);
+  const totalInquiries = inquiries.experian + inquiries.equifax + inquiries.transUnion;
+
+  const hasNegativeItems = collections > 0 || chargeOffs > 0 || bankruptcies > 0 || latePayments > 0;
+  const needsCreditRepair = hasNegativeItems || totalInquiries > 16;
 
   return {
     scores,
@@ -102,20 +107,31 @@ export async function parseCreditReportText(text: string): Promise<CreditReportD
     personalCardLimits,
     derogatoryAccounts,
     totalAccounts,
+    latePayments,
+    collections,
+    chargeOffs,
+    bankruptcies,
+    closedAccounts,
+    totalInquiries,
+    hasNegativeItems,
+    needsCreditRepair,
   };
 }
 
 // ─── Extraction Helpers ───
 
+function extractCount(text: string, pattern: RegExp): number {
+  const matches = text.match(pattern);
+  return matches ? matches.length : 0;
+}
+
 function extractScores(text: string): CreditReportData["scores"] {
   const scores: CreditReportData["scores"] = { experian: null, equifax: null, transUnion: null };
 
-  // Pattern: "Experian: 742" or "Experian Score: 742" or "EX: 742"
   const patterns = [
     { bureau: "experian" as const, regex: /experian[:\s]*(?:score[:\s]*)?\s*(\d{3})/i },
     { bureau: "equifax" as const, regex: /equifax[:\s]*(?:score[:\s]*)?\s*(\d{3})/i },
     { bureau: "transUnion" as const, regex: /trans\s*union[:\s]*(?:score[:\s]*)?\s*(\d{3})/i },
-    // Abbreviations
     { bureau: "experian" as const, regex: /\bEX[:\s]+(\d{3})\b/ },
     { bureau: "equifax" as const, regex: /\bEQ[:\s]+(\d{3})\b/ },
     { bureau: "transUnion" as const, regex: /\bTU[:\s]+(\d{3})\b/ },
@@ -125,19 +141,15 @@ function extractScores(text: string): CreditReportData["scores"] {
     const match = text.match(regex);
     if (match) {
       const score = parseInt(match[1]);
-      if (score >= 300 && score <= 850) {
-        scores[bureau] = score;
-      }
+      if (score >= 300 && score <= 850) scores[bureau] = score;
     }
   }
 
-  // Fallback: look for 3 consecutive scores (common in credit report exports)
   if (!scores.experian && !scores.equifax && !scores.transUnion) {
     const allScores = text.match(/\b(7\d{2}|6\d{2}|5\d{2}|8\d{2})\b/g);
     if (allScores && allScores.length >= 3) {
       const parsed = allScores.map(Number).filter((s) => s >= 300 && s <= 850);
       if (parsed.length >= 3) {
-        // Assume order: Experian, Equifax, TransUnion (most common report order)
         scores.experian = parsed[0];
         scores.equifax = parsed[1];
         scores.transUnion = parsed[2];
@@ -151,7 +163,6 @@ function extractScores(text: string): CreditReportData["scores"] {
 function extractInquiries(text: string): CreditReportData["inquiries"] {
   const inquiries = { experian: 0, equifax: 0, transUnion: 0 };
 
-  // Pattern: "Inquiries: 2" near bureau name, or "Experian Inquiries: 2"
   const patterns = [
     { bureau: "experian" as const, regex: /experian[\s\S]{0,50}inquir(?:y|ies)[:\s]*(\d+)/i },
     { bureau: "equifax" as const, regex: /equifax[\s\S]{0,50}inquir(?:y|ies)[:\s]*(\d+)/i },
@@ -160,8 +171,18 @@ function extractInquiries(text: string): CreditReportData["inquiries"] {
 
   for (const { bureau, regex } of patterns) {
     const match = text.match(regex);
-    if (match) {
-      inquiries[bureau] = parseInt(match[1]) || 0;
+    if (match) inquiries[bureau] = parseInt(match[1]) || 0;
+  }
+
+  // Fallback: count total inquiries section
+  if (inquiries.experian === 0 && inquiries.equifax === 0 && inquiries.transUnion === 0) {
+    const totalMatch = text.match(/(?:total\s*)?inquir(?:y|ies)[:\s]*(\d+)/i);
+    if (totalMatch) {
+      const total = parseInt(totalMatch[1]) || 0;
+      const split = Math.ceil(total / 3);
+      inquiries.experian = split;
+      inquiries.equifax = split;
+      inquiries.transUnion = total - (split * 2);
     }
   }
 
@@ -172,49 +193,34 @@ function extractBanks(text: string): string[] {
   const found: string[] = [];
   for (const bank of KNOWN_BANKS) {
     if (text.includes(bank)) {
-      // Capitalize properly
       const proper = bank.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-      if (!found.includes(proper)) {
-        found.push(proper);
-      }
+      if (!found.includes(proper)) found.push(proper);
     }
   }
   return found;
 }
 
 function extractCreditAge(text: string): number {
-  // Pattern: "Average Age: 5 years 3 months" or "Credit Age: 7.5 years"
   const yearMatch = text.match(/(?:average|credit)\s*(?:age|history)[:\s]*(\d+)\s*(?:years?|yrs?)/i);
   if (yearMatch) {
     let years = parseInt(yearMatch[1]);
     const monthMatch = text.match(/(?:average|credit)\s*(?:age|history)[:\s]*\d+\s*(?:years?|yrs?)\s*(?:and\s*)?(\d+)\s*(?:months?|mos?)/i);
-    if (monthMatch) {
-      years += parseInt(monthMatch[1]) / 12;
-    }
+    if (monthMatch) years += parseInt(monthMatch[1]) / 12;
     return years;
   }
-
-  // Pattern: "5y 3m" or "5 yr 3 mo"
   const shortMatch = text.match(/(\d+)\s*y(?:r|ear)?s?\s*(\d+)?\s*m(?:o|onth)?/i);
-  if (shortMatch) {
-    return parseInt(shortMatch[1]) + (parseInt(shortMatch[2] || "0") / 12);
-  }
-
-  // Default: assume 2 years if can't parse
+  if (shortMatch) return parseInt(shortMatch[1]) + (parseInt(shortMatch[2] || "0") / 12);
   return 0;
 }
 
 function extractCardLimits(text: string): number[] {
   const limits: number[] = [];
-  // Pattern: "$10,000" or "$25,000" near "limit" or "credit limit"
   const matches = text.match(/(?:credit\s*)?limit[:\s]*\$?([\d,]+)/gi);
   if (matches) {
     for (const match of matches) {
       const numStr = match.replace(/[^0-9]/g, "");
       const num = parseInt(numStr);
-      if (num >= 500 && num <= 500000) {
-        limits.push(num);
-      }
+      if (num >= 500 && num <= 500000) limits.push(num);
     }
   }
   return limits;

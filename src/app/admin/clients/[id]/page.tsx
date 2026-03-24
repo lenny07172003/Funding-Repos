@@ -21,6 +21,8 @@ import {
 } from "@/lib/client-actions";
 import { runStackingAnalysis, runRevenueLendingAnalysis, getClientAnalyses, sendBlueprintToClient } from "@/lib/funding-analysis";
 import { parseManualCreditData } from "@/lib/credit-report-parser";
+import { parseCreditReportPDF } from "@/lib/pdf-credit-parser";
+import { sendCreditAnalysisEmail } from "@/lib/credit-analysis-email";
 import { onboardClientFull } from "@/lib/onboard-client-action";
 import { sendAgreementToClient } from "@/lib/agreement-actions";
 
@@ -2168,22 +2170,81 @@ function AgreementViewer({ agreement }: { agreement: AgreementSignature }) {
 function StackingAnalysisPanel({ clientId }: { clientId: string }) {
   const [running, setRunning] = useState(false);
   const [analysisType, setAnalysisType] = useState<"stacking" | "revenue">("stacking");
+  const [inputMode, setInputMode] = useState<"pdf" | "manual">("pdf");
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState("");
   const [showConfirmSend, setShowConfirmSend] = useState(false);
   const [sending, setSending] = useState(false);
 
-  // Manual credit data inputs for stacking
+  // PDF upload state
+  const [uploading, setUploading] = useState(false);
+  const [pdfParsed, setPdfParsed] = useState(false);
+  const [pdfFileName, setPdfFileName] = useState("");
+  const [pdfRawPreview, setPdfRawPreview] = useState("");
+
+  // Credit data inputs (populated from PDF or manual entry)
   const [scores, setScores] = useState({ experian: "", equifax: "", transUnion: "" });
   const [inquiries, setInquiries] = useState({ experian: "0", equifax: "0", transUnion: "0" });
   const [creditAge, setCreditAge] = useState("3");
   const [existingBanks, setExistingBanks] = useState("");
+  const [personalLimits, setPersonalLimits] = useState("");
 
   // Revenue inputs
   const [monthlyRevenue, setMonthlyRevenue] = useState("");
   const [timeInBusiness, setTimeInBusiness] = useState("12");
   const [hasBankStatements, setHasBankStatements] = useState(true);
   const [hasTaxReturns, setHasTaxReturns] = useState(false);
+
+  async function handlePDFUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    setUploading(true);
+    setError("");
+    setPdfParsed(false);
+    setPdfRawPreview("");
+
+    try {
+      const formData = new FormData();
+      formData.append("creditReport", file);
+      const result = await parseCreditReportPDF(formData);
+
+      setPdfFileName(file.name);
+
+      if (result.success && result.data) {
+        // Auto-fill all fields from parsed PDF
+        setScores({
+          experian: result.data.scores.experian?.toString() || "",
+          equifax: result.data.scores.equifax?.toString() || "",
+          transUnion: result.data.scores.transUnion?.toString() || "",
+        });
+        setInquiries({
+          experian: result.data.inquiries.experian.toString(),
+          equifax: result.data.inquiries.equifax.toString(),
+          transUnion: result.data.inquiries.transUnion.toString(),
+        });
+        setCreditAge(result.data.creditAgeYears.toString());
+        setExistingBanks(result.data.existingBanks.join(", "));
+        setPersonalLimits(result.data.personalCardLimits.join(", "));
+        setPdfParsed(true);
+        if (result.rawText) setPdfRawPreview(result.rawText.substring(0, 500));
+      } else {
+        // Partial parse — show what we got and let admin fix
+        if (result.data) {
+          setScores({
+            experian: result.data.scores.experian?.toString() || "",
+            equifax: result.data.scores.equifax?.toString() || "",
+            transUnion: result.data.scores.transUnion?.toString() || "",
+          });
+          setExistingBanks(result.data.existingBanks.join(", "));
+        }
+        if (result.rawText) setPdfRawPreview(result.rawText);
+        setError(result.error || "Partial extraction — please review and fill in missing fields.");
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to parse PDF");
+    }
+    setUploading(false);
+  }
 
   async function runAnalysis() {
     setRunning(true);
@@ -2192,6 +2253,12 @@ function StackingAnalysisPanel({ clientId }: { clientId: string }) {
 
     try {
       if (analysisType === "stacking") {
+        // Parse personal limits from comma-separated string
+        const limits = personalLimits
+          .split(",")
+          .map((l) => parseFloat(l.replace(/[^0-9.]/g, "")))
+          .filter((l) => l > 0);
+
         const creditData = await parseManualCreditData({
           experianScore: scores.experian ? parseInt(scores.experian) : null,
           equifaxScore: scores.equifax ? parseInt(scores.equifax) : null,
@@ -2201,7 +2268,7 @@ function StackingAnalysisPanel({ clientId }: { clientId: string }) {
           transUnionInquiries: parseInt(inquiries.transUnion) || 0,
           creditAgeYears: parseFloat(creditAge) || 0,
           existingBanks: existingBanks.split(",").map((b) => b.trim()).filter(Boolean),
-          personalCardLimits: [],
+          personalCardLimits: limits,
           derogatoryAccounts: 0,
           totalAccounts: 0,
         });
@@ -2277,44 +2344,128 @@ function StackingAnalysisPanel({ clientId }: { clientId: string }) {
       {/* Inputs */}
       {analysisType === "stacking" ? (
         <div className="space-y-3 mb-4">
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <label className="text-xs text-gray-500">Experian</label>
-              <input className="input-field text-sm" type="number" placeholder="Score" value={scores.experian} onChange={(e) => setScores({ ...scores, experian: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">Equifax</label>
-              <input className="input-field text-sm" type="number" placeholder="Score" value={scores.equifax} onChange={(e) => setScores({ ...scores, equifax: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">TransUnion</label>
-              <input className="input-field text-sm" type="number" placeholder="Score" value={scores.transUnion} onChange={(e) => setScores({ ...scores, transUnion: e.target.value })} />
-            </div>
+          {/* Input mode toggle */}
+          <div className="flex bg-gray-50 rounded-lg p-0.5 mb-2">
+            <button
+              onClick={() => setInputMode("pdf")}
+              className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center justify-center gap-1.5 ${inputMode === "pdf" ? "bg-white text-brand-700 shadow-sm" : "text-gray-500"}`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              Upload Credit Report
+            </button>
+            <button
+              onClick={() => setInputMode("manual")}
+              className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center justify-center gap-1.5 ${inputMode === "manual" ? "bg-white text-brand-700 shadow-sm" : "text-gray-500"}`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Manual Entry
+            </button>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <label className="text-xs text-gray-500">EX Inquiries</label>
-              <input className="input-field text-sm" type="number" value={inquiries.experian} onChange={(e) => setInquiries({ ...inquiries, experian: e.target.value })} />
+
+          {/* PDF Upload */}
+          {inputMode === "pdf" && (
+            <div className="space-y-3">
+              <div
+                className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
+                  pdfParsed ? "border-emerald-300 bg-emerald-50" : "border-gray-300 hover:border-brand-400"
+                }`}
+              >
+                {uploading ? (
+                  <div className="flex items-center justify-center gap-2 py-2">
+                    <svg className="w-5 h-5 text-brand-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    <span className="text-sm text-brand-700 font-medium">AI is reading the credit report...</span>
+                  </div>
+                ) : pdfParsed ? (
+                  <div>
+                    <div className="flex items-center justify-center gap-2 mb-1">
+                      <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="text-sm font-medium text-emerald-700">Credit report parsed successfully</span>
+                    </div>
+                    <p className="text-xs text-emerald-600">{pdfFileName} — data extracted and populated below</p>
+                    <label className="inline-block mt-2 text-xs text-brand-600 hover:text-brand-800 cursor-pointer font-medium">
+                      Upload different report
+                      <input type="file" accept=".pdf" className="hidden" onChange={(e) => handlePDFUpload(e.target.files)} />
+                    </label>
+                  </div>
+                ) : (
+                  <label className="cursor-pointer block py-2">
+                    <svg className="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                    <p className="text-sm text-gray-600 font-medium">Upload Credit Report PDF</p>
+                    <p className="text-xs text-gray-400 mt-0.5">SmartCredit, Array, or any credit report PDF</p>
+                    <input type="file" accept=".pdf" className="hidden" onChange={(e) => handlePDFUpload(e.target.files)} />
+                  </label>
+                )}
+              </div>
+
+              {/* Raw text preview if partial parse */}
+              {pdfRawPreview && !pdfParsed && (
+                <details className="text-xs">
+                  <summary className="text-gray-500 cursor-pointer hover:text-gray-700">View extracted text</summary>
+                  <pre className="mt-1 p-2 bg-gray-50 rounded text-[10px] text-gray-500 max-h-32 overflow-auto whitespace-pre-wrap">{pdfRawPreview}</pre>
+                </details>
+              )}
             </div>
-            <div>
-              <label className="text-xs text-gray-500">EQ Inquiries</label>
-              <input className="input-field text-sm" type="number" value={inquiries.equifax} onChange={(e) => setInquiries({ ...inquiries, equifax: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">TU Inquiries</label>
-              <input className="input-field text-sm" type="number" value={inquiries.transUnion} onChange={(e) => setInquiries({ ...inquiries, transUnion: e.target.value })} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-gray-500">Credit Age (years)</label>
-              <input className="input-field text-sm" type="number" value={creditAge} onChange={(e) => setCreditAge(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">Existing Banks</label>
-              <input className="input-field text-sm" placeholder="Chase, Amex, BOA..." value={existingBanks} onChange={(e) => setExistingBanks(e.target.value)} />
-            </div>
-          </div>
+          )}
+
+          {/* Score fields — shown for both PDF (auto-filled) and manual */}
+          {(inputMode === "manual" || pdfParsed || (inputMode === "pdf" && scores.experian)) && (
+            <>
+              {pdfParsed && <p className="text-xs text-emerald-600 font-medium">Extracted data — review and adjust if needed:</p>}
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-xs text-gray-500">Experian</label>
+                  <input className="input-field text-sm" type="number" placeholder="Score" value={scores.experian} onChange={(e) => setScores({ ...scores, experian: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">Equifax</label>
+                  <input className="input-field text-sm" type="number" placeholder="Score" value={scores.equifax} onChange={(e) => setScores({ ...scores, equifax: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">TransUnion</label>
+                  <input className="input-field text-sm" type="number" placeholder="Score" value={scores.transUnion} onChange={(e) => setScores({ ...scores, transUnion: e.target.value })} />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-xs text-gray-500">EX Inquiries</label>
+                  <input className="input-field text-sm" type="number" value={inquiries.experian} onChange={(e) => setInquiries({ ...inquiries, experian: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">EQ Inquiries</label>
+                  <input className="input-field text-sm" type="number" value={inquiries.equifax} onChange={(e) => setInquiries({ ...inquiries, equifax: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">TU Inquiries</label>
+                  <input className="input-field text-sm" type="number" value={inquiries.transUnion} onChange={(e) => setInquiries({ ...inquiries, transUnion: e.target.value })} />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-xs text-gray-500">Credit Age (years)</label>
+                  <input className="input-field text-sm" type="number" value={creditAge} onChange={(e) => setCreditAge(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">Existing Banks</label>
+                  <input className="input-field text-sm" placeholder="Chase, Amex, BOA..." value={existingBanks} onChange={(e) => setExistingBanks(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">Personal Card Limits</label>
+                  <input className="input-field text-sm" placeholder="10000, 15000, 8000" value={personalLimits} onChange={(e) => setPersonalLimits(e.target.value)} />
+                </div>
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-3 mb-4">
@@ -2384,13 +2535,39 @@ function StackingAnalysisPanel({ clientId }: { clientId: string }) {
             </div>
           )}
 
-          {/* Send to client button */}
+          {/* Send to client buttons */}
           <div className="flex gap-2">
             <button
               onClick={() => setShowConfirmSend(true)}
               className="btn-secondary text-sm flex-1"
             >
               Send Blueprint to Client
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  const creditData = await parseManualCreditData({
+                    experianScore: scores.experian ? parseInt(scores.experian) : null,
+                    equifaxScore: scores.equifax ? parseInt(scores.equifax) : null,
+                    transUnionScore: scores.transUnion ? parseInt(scores.transUnion) : null,
+                    experianInquiries: parseInt(inquiries.experian) || 0,
+                    equifaxInquiries: parseInt(inquiries.equifax) || 0,
+                    transUnionInquiries: parseInt(inquiries.transUnion) || 0,
+                    creditAgeYears: parseFloat(creditAge) || 0,
+                    existingBanks: existingBanks.split(",").map((b) => b.trim()).filter(Boolean),
+                    personalCardLimits: personalLimits.split(",").map((l) => parseFloat(l.replace(/[^0-9.]/g, ""))).filter((l) => l > 0),
+                    derogatoryAccounts: 0,
+                    totalAccounts: 0,
+                  });
+                  await sendCreditAnalysisEmail(clientId, creditData);
+                  alert("Credit analysis report sent to client!");
+                } catch (err: any) {
+                  alert(err.message);
+                }
+              }}
+              className="btn-primary text-sm flex-1"
+            >
+              Send Credit Analysis Report
             </button>
           </div>
         </div>
