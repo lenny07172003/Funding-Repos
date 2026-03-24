@@ -110,51 +110,75 @@ export interface StackingBlueprint {
   };
 }
 
-// ─── Qualification Check ───
+// ─── Per-Bureau Qualification Check ───
 
 function checkQualification(data: CreditReportData): {
   qualified: boolean;
   tier: "full" | "reduced" | "not_qualified";
   reasons: string[];
+  qualifiedBureaus: string[];
+  disqualifiedBureaus: { bureau: string; score: number | null; reason: string }[];
 } {
   const reasons: string[] = [];
-  const validScores = [data.scores.experian, data.scores.equifax, data.scores.transUnion]
-    .filter((s): s is number => s != null && s > 0);
+  const qualifiedBureaus: string[] = [];
+  const disqualifiedBureaus: { bureau: string; score: number | null; reason: string }[] = [];
 
-  if (validScores.length === 0) {
-    return { qualified: false, tier: "not_qualified", reasons: ["No credit scores available."] };
+  // Check each bureau independently
+  const bureaus = [
+    { name: "experian", score: data.scores.experian },
+    { name: "equifax", score: data.scores.equifax },
+    { name: "transunion", score: data.scores.transUnion },
+  ];
+
+  for (const b of bureaus) {
+    if (!b.score || b.score <= 0) {
+      disqualifiedBureaus.push({ bureau: b.name, score: null, reason: "No score available" });
+    } else if (b.score < 680) {
+      disqualifiedBureaus.push({ bureau: b.name, score: b.score, reason: `Score ${b.score} is below 680 minimum` });
+    } else {
+      qualifiedBureaus.push(b.name);
+    }
   }
 
-  const lowestScore = Math.min(...validScores);
-  const avgScore = Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length);
+  // If NO bureau qualifies, not eligible for stacking
+  if (qualifiedBureaus.length === 0) {
+    reasons.push("No bureau scores meet the 680 minimum for credit card stacking.");
+    for (const dq of disqualifiedBureaus) {
+      if (dq.score) reasons.push(`${dq.bureau.charAt(0).toUpperCase() + dq.bureau.slice(1)}: ${dq.score} — ${dq.reason}`);
+    }
+    return { qualified: false, tier: "not_qualified", reasons, qualifiedBureaus, disqualifiedBureaus };
+  }
+
+  // Note which bureaus are excluded
+  for (const dq of disqualifiedBureaus) {
+    if (dq.score) {
+      reasons.push(`${dq.bureau.charAt(0).toUpperCase() + dq.bureau.slice(1)} excluded (${dq.score}) — below 680. Only stacking on: ${qualifiedBureaus.map((b) => b.charAt(0).toUpperCase() + b.slice(1)).join(", ")}.`);
+    }
+  }
+
+  // Inquiry recommendations
   const maxInquiries = Math.max(data.inquiries.experian, data.inquiries.equifax, data.inquiries.transUnion);
-
-  // Check disqualifiers — only score below 680 is a hard disqualifier
-  if (lowestScore < 680) {
-    reasons.push(`Lowest credit score is ${lowestScore} — minimum 680 required for credit card stacking.`);
-    return { qualified: false, tier: "not_qualified", reasons };
-  }
-
-  // Recommendations (not disqualifiers)
   if (maxInquiries > 3) {
-    reasons.push(`RECOMMENDATION: ${maxInquiries} inquiries detected on one bureau — inquiries should be removed before applying for best results.`);
+    reasons.push(`RECOMMENDATION: ${maxInquiries} inquiries detected — inquiries should be removed before applying for best results.`);
   }
 
   if (data.creditAgeYears > 0 && data.creditAgeYears < 2) {
     reasons.push(`RECOMMENDATION: Credit history is ${data.creditAgeYears < 1 ? "under 1 year" : `${data.creditAgeYears.toFixed(1)} years`} — 2+ years is ideal for higher approvals.`);
   }
 
-  // Full qualification
-  if (avgScore >= 730) {
-    return { qualified: true, tier: "full", reasons: [] };
+  // Determine tier from qualified bureau scores
+  const qualifiedScores = bureaus
+    .filter((b) => qualifiedBureaus.includes(b.name))
+    .map((b) => b.score!)
+    .filter((s) => s > 0);
+  const avgQualifiedScore = Math.round(qualifiedScores.reduce((a, b) => a + b, 0) / qualifiedScores.length);
+
+  if (avgQualifiedScore >= 730) {
+    return { qualified: true, tier: "full", reasons, qualifiedBureaus, disqualifiedBureaus };
   }
 
-  // 680-729 = reduced
-  return {
-    qualified: true,
-    tier: "reduced",
-    reasons: [`Average score ${avgScore} is below 730 — stacking with reduced limits.`],
-  };
+  reasons.push(`Qualified bureau average ${avgQualifiedScore} is below 730 — conservative limit projections applied.`);
+  return { qualified: true, tier: "reduced", reasons, qualifiedBureaus, disqualifiedBureaus };
 }
 
 // ─── Main Engine ───
@@ -178,7 +202,7 @@ export async function generateStackingBlueprint(data: CreditReportData): Promise
       totalProjectedMin: 0,
       totalProjectedMax: 0,
       totalCards: 0,
-      summary: `Client does not qualify for credit card stacking (score below 680). Route to revenue-based funding analysis — if the business has revenue, they can still access MCAs, term loans, lines of credit, equipment financing, and SBA products. Cross-sell credit repair to build score toward 680+ for future stacking eligibility.`,
+      summary: `Client does not qualify for credit card stacking — no bureau scores meet the 680 minimum. ${qualification.disqualifiedBureaus.map((d) => `${d.bureau}: ${d.score || "N/A"}`).join(", ")}. Route to revenue-based funding analysis and cross-sell credit repair to build toward 680+.`,
       priorityMatches: 0,
       qualificationDetails: {
         averageScore: avgScore,
@@ -191,17 +215,31 @@ export async function generateStackingBlueprint(data: CreditReportData): Promise
     };
   }
 
+  // Calculate comparable limit factor from existing personal card limits
+  // If client's highest personal card is $8K, don't project $50K business cards
+  const highestPersonalLimit = data.personalCardLimits.length > 0
+    ? Math.max(...data.personalCardLimits)
+    : 0;
+  const avgPersonalLimit = data.personalCardLimits.length > 0
+    ? Math.round(data.personalCardLimits.reduce((a, b) => a + b, 0) / data.personalCardLimits.length)
+    : 0;
+
+  // Comparable limit factor: business cards typically 1-3x personal limits
+  // Conservative: use 1.5x the highest personal limit as the realistic ceiling per card
+  // If no personal limits data, use conservative defaults
+  const comparableLimitCeiling = highestPersonalLimit > 0
+    ? Math.round(highestPersonalLimit * 1.5)
+    : 15000; // Conservative default if no personal limit data
+
   // Fetch all active cards
   const allCards = await prisma.stackingCard.findMany({
     where: { isActive: true },
     orderBy: [{ bureau: "asc" }, { stackingOrder: "asc" }],
   });
 
-  // Filter cards by bureau score — only exclude if score is below 680 for that bureau
+  // ONLY include cards from QUALIFIED bureaus (680+)
   const qualifiedCards = allCards.filter((card) => {
-    const bureauScore = data.scores[card.bureau as keyof typeof data.scores];
-    if (!bureauScore || bureauScore < 680) return false;
-    return true;
+    return qualification.qualifiedBureaus.includes(card.bureau);
   });
 
   // Score each card
@@ -234,9 +272,13 @@ export async function generateStackingBlueprint(data: CreditReportData): Promise
     const bureauInquiries = data.inquiries[card.bureau as keyof typeof data.inquiries] || 0;
     const hasInquiryWarning = bureauInquiries > 3;
 
-    // Adjust projected limits based on tier
-    let limitMultiplier = 1;
-    if (qualification.tier === "reduced") limitMultiplier = 0.6;
+    // Adjust projected limits — be conservative and realistic
+    // Tier affects base multiplier
+    let limitMultiplier = qualification.tier === "full" ? 0.7 : 0.45;
+
+    // Apply comparable limit ceiling
+    // Business card limits correlate to existing personal limits
+    const cardComparableCeiling = comparableLimitCeiling;
 
     return {
       card,
@@ -244,6 +286,7 @@ export async function generateStackingBlueprint(data: CreditReportData): Promise
       bureauInquiries,
       priorityScore,
       hasRelationship,
+      cardComparableCeiling,
       limitMultiplier,
     };
   });
@@ -266,7 +309,7 @@ export async function generateStackingBlueprint(data: CreditReportData): Promise
     const steps: StackingStep[] = [];
     for (const sc of phase1Cards) {
       usedCardIds.add(sc.card.id);
-      steps.push(buildStep(sc.card, currentDay, sc.hasRelationship, steps.length + 1, sc.limitMultiplier, sc.hasInquiryWarning ? `${sc.bureauInquiries} inquiries on ${sc.card.bureau} — recommend removing inquiries before applying to this card.` : ""));
+      steps.push(buildStep(sc.card, currentDay, sc.hasRelationship, steps.length + 1, sc.limitMultiplier, sc.hasInquiryWarning ? `${sc.bureauInquiries} inquiries on ${sc.card.bureau} — recommend removing inquiries before applying to this card.` : "", sc.cardComparableCeiling));
 
       // Pull in sequenceable cards from the same group
       if (sc.card.sequenceGroup) {
@@ -275,7 +318,7 @@ export async function generateStackingBlueprint(data: CreditReportData): Promise
         );
         for (const gc of groupCards) {
           usedCardIds.add(gc.card.id);
-          steps.push(buildStep(gc.card, currentDay, gc.hasRelationship, steps.length + 1, gc.limitMultiplier, gc.hasInquiryWarning ? `${gc.bureauInquiries} inquiries on ${gc.card.bureau} — recommend removing inquiries before applying.` : ""));
+          steps.push(buildStep(gc.card, currentDay, gc.hasRelationship, steps.length + 1, gc.limitMultiplier, gc.hasInquiryWarning ? `${gc.bureauInquiries} inquiries on ${gc.card.bureau} — recommend removing inquiries before applying.` : "", gc.cardComparableCeiling));
         }
       }
 
@@ -308,7 +351,7 @@ export async function generateStackingBlueprint(data: CreditReportData): Promise
     const steps: StackingStep[] = [];
     for (const sc of groupCards) {
       usedCardIds.add(sc.card.id);
-      steps.push(buildStep(sc.card, currentDay, sc.hasRelationship, steps.length + 1, sc.limitMultiplier, sc.hasInquiryWarning ? `${sc.bureauInquiries} inquiries on ${sc.card.bureau} — recommend removing inquiries before applying to this card.` : ""));
+      steps.push(buildStep(sc.card, currentDay, sc.hasRelationship, steps.length + 1, sc.limitMultiplier, sc.hasInquiryWarning ? `${sc.bureauInquiries} inquiries on ${sc.card.bureau} — recommend removing inquiries before applying to this card.` : "", sc.cardComparableCeiling));
     }
     if (steps.length > 0) {
       phases.push({
@@ -330,7 +373,7 @@ export async function generateStackingBlueprint(data: CreditReportData): Promise
     const steps: StackingStep[] = [];
     for (const sc of remainingCards) {
       usedCardIds.add(sc.card.id);
-      steps.push(buildStep(sc.card, currentDay, sc.hasRelationship, steps.length + 1, sc.limitMultiplier, sc.hasInquiryWarning ? `${sc.bureauInquiries} inquiries on ${sc.card.bureau} — recommend removing inquiries before applying to this card.` : ""));
+      steps.push(buildStep(sc.card, currentDay, sc.hasRelationship, steps.length + 1, sc.limitMultiplier, sc.hasInquiryWarning ? `${sc.bureauInquiries} inquiries on ${sc.card.bureau} — recommend removing inquiries before applying to this card.` : "", sc.cardComparableCeiling));
       currentDay += sc.card.waitDaysAfter > 0 ? sc.card.waitDaysAfter : 2;
     }
 
@@ -359,14 +402,22 @@ export async function generateStackingBlueprint(data: CreditReportData): Promise
     )
   );
 
-  const tierLabel = qualification.tier === "full" ? "Full Stacking (730+)" : "Reduced Stacking (680-729)";
-  let summary = `${tierLabel} — ${totalCards}-card blueprint across ${phases.length} phases. `;
-  summary += `Projected funding: $${totalProjectedMin.toLocaleString()}-$${totalProjectedMax.toLocaleString()}. `;
+  const qualBureauNames = qualification.qualifiedBureaus.map((b) => b.charAt(0).toUpperCase() + b.slice(1));
+  const disqBureauNames = qualification.disqualifiedBureaus.filter((d) => d.score).map((d) => `${d.bureau.charAt(0).toUpperCase() + d.bureau.slice(1)} (${d.score})`);
+
+  let summary = `Stacking on ${qualBureauNames.join(" & ")} bureau${qualBureauNames.length > 1 ? "s" : ""} — ${totalCards} card${totalCards !== 1 ? "s" : ""} across ${phases.length} phase${phases.length !== 1 ? "s" : ""}. `;
+  summary += `Conservative projected range: $${totalProjectedMin.toLocaleString()}-$${totalProjectedMax.toLocaleString()}. `;
+  if (highestPersonalLimit > 0) {
+    summary += `Projections based on existing personal limits (highest: $${highestPersonalLimit.toLocaleString()}). `;
+  }
+  if (disqBureauNames.length > 0) {
+    summary += `Excluded: ${disqBureauNames.join(", ")} — below 680 minimum. `;
+  }
   if (priorityMatches > 0) {
     summary += `${priorityMatches} card(s) prioritized from existing bank relationships. `;
   }
   if (qualification.reasons.length > 0) {
-    summary += qualification.reasons.join(" ");
+    summary += qualification.reasons.filter((r) => r.startsWith("RECOMMENDATION")).join(" ");
   }
 
   return {
@@ -392,9 +443,20 @@ export async function generateStackingBlueprint(data: CreditReportData): Promise
 
 // ─── Step Builder ───
 
-function buildStep(card: any, day: number, isPriority: boolean, order: number, limitMultiplier: number, inquiryWarning: string = ""): StackingStep {
-  const adjMin = card.typicalLimitMin ? Math.round(card.typicalLimitMin * limitMultiplier) : null;
-  const adjMax = card.typicalLimitMax ? Math.round(card.typicalLimitMax * limitMultiplier) : null;
+function buildStep(card: any, day: number, isPriority: boolean, order: number, limitMultiplier: number, inquiryWarning: string = "", comparableCeiling: number = 15000): StackingStep {
+  // Realistic limit projections based on actual bank data:
+  // Chase Ink: $3K-$25K starting (most get $3-10K first card)
+  // Amex Blue Business: $5K-$25K (most get $5-15K)
+  // Most banks: $3K-$15K for first-time business card holders
+  //
+  // Apply multiplier for tier, then cap at comparable ceiling
+  const rawMin = card.typicalLimitMin ? Math.round(card.typicalLimitMin * limitMultiplier) : 3000;
+  const rawMax = card.typicalLimitMax ? Math.round(card.typicalLimitMax * limitMultiplier) : 10000;
+
+  // Cap at comparable limit (based on existing personal card limits)
+  // Business cards rarely exceed 2x the client's highest personal limit on first approval
+  const adjMin = Math.min(rawMin, comparableCeiling);
+  const adjMax = Math.min(rawMax, comparableCeiling);
 
   return {
     order,
