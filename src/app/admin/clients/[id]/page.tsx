@@ -2206,7 +2206,13 @@ function StackingAnalysisPanel({ clientId }: { clientId: string }) {
     try {
       const formData = new FormData();
       formData.append("creditReport", file);
-      const result = await parseCreditReportPDF(formData);
+
+      // Use API route instead of server action to avoid DOMMatrix/Edge issues
+      const response = await fetch("/api/parse-credit-report", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await response.json();
 
       setPdfFileName(file.name);
 
@@ -2226,7 +2232,7 @@ function StackingAnalysisPanel({ clientId }: { clientId: string }) {
         setExistingBanks(result.data.existingBanks.join(", "));
         setPersonalLimits(result.data.personalCardLimits.join(", "));
         setPdfParsed(true);
-        if (result.rawText) setPdfRawPreview(result.rawText.substring(0, 500));
+        if (result.rawTextPreview || result.rawText) setPdfRawPreview(result.rawTextPreview || result.rawText.substring(0, 500));
       } else {
         // Partial parse — show what we got and let admin fix
         if (result.data) {
@@ -2237,7 +2243,7 @@ function StackingAnalysisPanel({ clientId }: { clientId: string }) {
           });
           setExistingBanks(result.data.existingBanks.join(", "));
         }
-        if (result.rawText) setPdfRawPreview(result.rawText);
+        if (result.rawTextPreview || result.rawText) setPdfRawPreview(result.rawTextPreview || result.rawText);
         setError(result.error || "Partial extraction — please review and fill in missing fields.");
       }
     } catch (err: any) {
