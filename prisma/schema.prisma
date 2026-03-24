@@ -47,6 +47,12 @@ model Agency {
   outreachCreditsBalance Int @default(0)
   outreachCreditsUsed    Int @default(0)
 
+  // Custom funding agreement (rich text HTML)
+  fundingAgreementTitle   String @default("BUSINESS FUNDING SERVICES AGREEMENT")
+  fundingAgreementContent String @default("") // HTML content — admin edits this
+  fundingAgreementVersion Int    @default(1)
+  fundingAgreementUpdatedAt String? // ISO date of last edit
+
   subAccounts SubAccount[]
   users       User[]
 }
@@ -139,8 +145,11 @@ model Client {
   // Notes
   notes String @default("")
 
-  // Agreement
-  agreementSignature String? // JSON string
+  // Agreement signing
+  agreementSignature String? // JSON: { fullName, businessName, signatureData, dateSigned, timeSigned, ipAddress, agreementVersion }
+  agreementSentAt    String? // When the agreement was sent to the client
+  agreementViewedAt  String? // When the client first opened the agreement
+  agreementSignedAt  String? // When the client signed (timestamp)
 
   // Credit monitoring
   creditMonitoringStatus   String @default("not_started")

@@ -11,7 +11,7 @@ export default auth((req) => {
   const role = user?.role as string | undefined;
 
   // Public routes — always accessible
-  const publicPaths = ["/login", "/signup", "/api/auth", "/api/webhooks", "/api/debug", "/onboard"];
+  const publicPaths = ["/login", "/signup", "/api/auth", "/api/webhooks", "/api/debug", "/onboard", "/sign"];
   if (publicPaths.some((p) => pathname.startsWith(p))) {
     // Redirect logged-in users away from login page
     if (pathname === "/login" && isLoggedIn) {

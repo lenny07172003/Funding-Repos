@@ -128,13 +128,22 @@ export default function AdminNav() {
                       Team Members
                     </Link>
                     {(isSuper || isAgencyAdmin) && (
-                      <Link
-                        href="/admin/settings/branding"
-                        onClick={() => setUserMenuOpen(false)}
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                      >
-                        Branding
-                      </Link>
+                      <>
+                        <Link
+                          href="/admin/settings/branding"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        >
+                          Branding
+                        </Link>
+                        <Link
+                          href="/admin/settings/agreement"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        >
+                          Funding Agreement
+                        </Link>
+                      </>
                     )}
                   </div>
                   <div className="border-t border-gray-100 py-1">
