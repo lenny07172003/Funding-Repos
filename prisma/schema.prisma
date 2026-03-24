@@ -119,15 +119,25 @@ model Client {
 
   // Business info
   businessName         String @default("")
+  businessStructure    String @default("") // llc, s_corp, c_corp, sole_prop, partnership
   businessAge          String @default("")
+  yearsInBusiness      Int    @default(0)
   naicsCode            String @default("")
   sicCode              String @default("")
   ein                  String @default("")
   businessAddress      String @default("")
   businessPhone        String @default("")
   annualRevenue        String @default("")
+  monthlyRevenue       String @default("")
   entityType           String @default("")
   stateOfIncorporation String @default("")
+  industry             String @default("") // Industry description
+
+  // Primary banking
+  primaryBank          String @default("") // Where do you bank
+  bankRelationshipLength String @default("") // How long with this bank
+  estimatedBankBalance Float  @default(0)
+  bankRating           String @default("") // Auto-calculated: low_4, mid_4, high_4, low_5, mid_5, high_5
 
   // Credit profile (stored as JSON for flexibility)
   creditProfile String @default("{\"experian\":{\"score\":null,\"accounts\":null,\"creditAge\":\"\",\"derogatoryAccounts\":null,\"highestCreditLimit\":null,\"inquiries\":null},\"equifax\":{\"score\":null,\"accounts\":null,\"creditAge\":\"\",\"derogatoryAccounts\":null,\"highestCreditLimit\":null,\"inquiries\":null},\"transUnion\":{\"score\":null,\"accounts\":null,\"creditAge\":\"\",\"derogatoryAccounts\":null,\"highestCreditLimit\":null,\"inquiries\":null},\"apiKeyConfigured\":false,\"lastPulled\":null}")

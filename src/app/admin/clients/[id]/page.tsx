@@ -791,53 +791,156 @@ export default function ClientDetailPage() {
             <h3 className="font-semibold text-lg text-brand-800 mb-4">Business Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="label">Business Name</label>
+                <label className="label">Business Name *</label>
                 <input className="input-field" value={client.businessName} onChange={(e) => updateBusiness("businessName", e.target.value)} />
               </div>
               <div>
-                <label className="label">Business Age</label>
-                <input className="input-field" placeholder="e.g. 2 years" value={client.businessAge} onChange={(e) => updateBusiness("businessAge", e.target.value)} />
-              </div>
-              <div>
-                <label className="label">EIN</label>
-                <input className="input-field" value={client.ein} onChange={(e) => updateBusiness("ein", e.target.value)} />
-              </div>
-              <div>
-                <label className="label">NAICS Code</label>
-                <input className="input-field" value={client.naicsCode} onChange={(e) => updateBusiness("naicsCode", e.target.value)} />
-              </div>
-              <div>
-                <label className="label">SIC Code</label>
-                <input className="input-field" value={client.sicCode} onChange={(e) => updateBusiness("sicCode", e.target.value)} />
-              </div>
-              <div>
-                <label className="label">Entity Type</label>
-                <select className="input-field" value={client.entityType} onChange={(e) => updateBusiness("entityType", e.target.value)}>
+                <label className="label">Business Structure *</label>
+                <select className="input-field" value={client.businessStructure || client.entityType} onChange={(e) => { updateBusiness("businessStructure", e.target.value); updateBusiness("entityType", e.target.value); }}>
                   <option value="">Select...</option>
-                  <option value="sole_proprietorship">Sole Proprietorship</option>
                   <option value="llc">LLC</option>
-                  <option value="corporation">Corporation</option>
                   <option value="s_corp">S-Corp</option>
+                  <option value="c_corp">C-Corp</option>
+                  <option value="sole_prop">Sole Proprietorship</option>
                   <option value="partnership">Partnership</option>
                 </select>
+              </div>
+              <div>
+                <label className="label">EIN *</label>
+                <input className="input-field" value={client.ein} onChange={(e) => updateBusiness("ein", e.target.value)} placeholder="XX-XXXXXXX" />
+              </div>
+              <div>
+                <label className="label">Years in Business *</label>
+                <input className="input-field" type="number" min="0" value={client.yearsInBusiness || ""} onChange={(e) => saveField({ yearsInBusiness: parseInt(e.target.value) || 0 })} placeholder="0" />
+              </div>
+              <div>
+                <label className="label">Annual Revenue *</label>
+                <input className="input-field" placeholder="$250,000" value={client.annualRevenue} onChange={(e) => updateBusiness("annualRevenue", e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Monthly Revenue *</label>
+                <input className="input-field" placeholder="$20,000" value={client.monthlyRevenue} onChange={(e) => updateBusiness("monthlyRevenue", e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Industry / NAICS *</label>
+                <input className="input-field" value={client.naicsCode} onChange={(e) => updateBusiness("naicsCode", e.target.value)} placeholder="e.g. 541511 — IT Services" />
+              </div>
+              <div>
+                <label className="label">Industry Description</label>
+                <input className="input-field" value={client.industry} onChange={(e) => updateBusiness("industry", e.target.value)} placeholder="e.g. Professional Services" />
               </div>
               <div>
                 <label className="label">State of Incorporation</label>
                 <input className="input-field" value={client.stateOfIncorporation} onChange={(e) => updateBusiness("stateOfIncorporation", e.target.value)} />
               </div>
               <div>
-                <label className="label">Annual Revenue</label>
-                <input className="input-field" placeholder="$" value={client.annualRevenue} onChange={(e) => updateBusiness("annualRevenue", e.target.value)} />
-              </div>
-              <div>
                 <label className="label">Business Phone</label>
                 <input className="input-field" type="tel" value={client.businessPhone} onChange={(e) => updateBusiness("businessPhone", e.target.value)} />
+              </div>
+              <div>
+                <label className="label">SIC Code</label>
+                <input className="input-field" value={client.sicCode} onChange={(e) => updateBusiness("sicCode", e.target.value)} />
               </div>
               <div className="md:col-span-3">
                 <label className="label">Business Address</label>
                 <input className="input-field" value={client.businessAddress} onChange={(e) => updateBusiness("businessAddress", e.target.value)} />
               </div>
             </div>
+          </div>
+
+          {/* Primary Banking */}
+          <div className="card p-6 border-brand-200">
+            <h3 className="font-semibold text-lg text-brand-800 mb-4">Primary Banking Relationship</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="label">Primary Bank *</label>
+                <select className="input-field" value={client.primaryBank} onChange={(e) => saveField({ primaryBank: e.target.value })}>
+                  <option value="">Select Bank...</option>
+                  <option value="Chase">Chase</option>
+                  <option value="Bank of America">Bank of America</option>
+                  <option value="Wells Fargo">Wells Fargo</option>
+                  <option value="Citibank">Citibank</option>
+                  <option value="US Bank">US Bank</option>
+                  <option value="PNC Bank">PNC Bank</option>
+                  <option value="TD Bank">TD Bank</option>
+                  <option value="Capital One">Capital One</option>
+                  <option value="Truist">Truist</option>
+                  <option value="Citizens Bank">Citizens Bank</option>
+                  <option value="KeyBank">KeyBank</option>
+                  <option value="M&T Bank">M&T Bank</option>
+                  <option value="Valley National Bank">Valley National Bank</option>
+                  <option value="Navy Federal">Navy Federal</option>
+                  <option value="USAA">USAA</option>
+                  <option value="Regions Bank">Regions Bank</option>
+                  <option value="Fifth Third Bank">Fifth Third Bank</option>
+                  <option value="Huntington Bank">Huntington Bank</option>
+                  <option value="BMO">BMO</option>
+                  <option value="Santander">Santander</option>
+                  <option value="First National Bank">First National Bank</option>
+                  <option value="Webster Bank">Webster Bank</option>
+                  <option value="Ameris Bank">Ameris Bank</option>
+                  <option value="Columbia Bank">Columbia Bank</option>
+                  <option value="Mercury">Mercury</option>
+                  <option value="Relay">Relay</option>
+                  <option value="Novo">Novo</option>
+                  <option value="Bluevine">Bluevine</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Banking Relationship Length *</label>
+                <select className="input-field" value={client.bankRelationshipLength} onChange={(e) => saveField({ bankRelationshipLength: e.target.value })}>
+                  <option value="">Select...</option>
+                  <option value="less_than_6mo">Less than 6 months</option>
+                  <option value="6mo_to_1yr">6 months — 1 year</option>
+                  <option value="1_to_2yr">1 — 2 years</option>
+                  <option value="2_to_3yr">2 — 3 years</option>
+                  <option value="3_to_5yr">3 — 5 years</option>
+                  <option value="5_plus">5+ years</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Estimated Bank Balance *</label>
+                <input
+                  className="input-field"
+                  type="number"
+                  placeholder="$"
+                  value={client.estimatedBankBalance || ""}
+                  onChange={async (e) => {
+                    const balance = parseFloat(e.target.value) || 0;
+                    const rating = getBankRating(balance);
+                    await saveField({ estimatedBankBalance: balance, bankRating: rating.key });
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Bank Rating Display */}
+            {client.estimatedBankBalance > 0 && (() => {
+              const rating = getBankRating(client.estimatedBankBalance);
+              return (
+                <div className={`mt-4 p-4 rounded-lg border ${rating.bgColor}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-medium text-gray-500 block">Bank Balance Rating</span>
+                      <span className={`text-lg font-bold ${rating.textColor}`}>{rating.label}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs text-gray-500 block">Balance</span>
+                      <span className="text-lg font-bold text-gray-900">${client.estimatedBankBalance.toLocaleString()}</span>
+                    </div>
+                    <div className={`px-4 py-2 rounded-lg font-bold text-sm ${rating.badgeColor}`}>
+                      {rating.tier}
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                      <div className={`h-2.5 rounded-full ${rating.barColor}`} style={{ width: `${rating.percent}%` }} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -1913,6 +2016,28 @@ function ClientLoginPanel({ clientId, clientEmail, onCreated }: { clientId: stri
       )}
     </div>
   );
+}
+
+// ─── Full Signed Agreement Viewer ───
+
+// ─── Bank Rating Calculator ───
+
+function getBankRating(balance: number): {
+  key: string;
+  tier: string;
+  label: string;
+  textColor: string;
+  bgColor: string;
+  badgeColor: string;
+  barColor: string;
+  percent: number;
+} {
+  if (balance >= 70000) return { key: "high_5", tier: "HIGH 5", label: "Super Amazing", textColor: "text-emerald-700", bgColor: "bg-emerald-50 border-emerald-200", badgeColor: "bg-emerald-600 text-white", barColor: "bg-emerald-600", percent: 100 };
+  if (balance >= 40000) return { key: "mid_5", tier: "MID 5", label: "Amazing", textColor: "text-emerald-600", bgColor: "bg-emerald-50 border-emerald-200", badgeColor: "bg-emerald-500 text-white", barColor: "bg-emerald-500", percent: 88 };
+  if (balance >= 10000) return { key: "low_5", tier: "LOW 5", label: "Recommended", textColor: "text-blue-700", bgColor: "bg-blue-50 border-blue-200", badgeColor: "bg-blue-600 text-white", barColor: "bg-blue-600", percent: 72 };
+  if (balance >= 7000) return { key: "high_4", tier: "HIGH 4", label: "Good", textColor: "text-brand-700", bgColor: "bg-brand-50 border-brand-200", badgeColor: "bg-brand-600 text-white", barColor: "bg-brand-500", percent: 55 };
+  if (balance >= 4000) return { key: "mid_4", tier: "MID 4", label: "Ok", textColor: "text-amber-700", bgColor: "bg-amber-50 border-amber-200", badgeColor: "bg-amber-500 text-white", barColor: "bg-amber-500", percent: 38 };
+  return { key: "low_4", tier: "LOW 4", label: "Poor", textColor: "text-red-700", bgColor: "bg-red-50 border-red-200", badgeColor: "bg-red-500 text-white", barColor: "bg-red-500", percent: 18 };
 }
 
 // ─── Full Signed Agreement Viewer ───
