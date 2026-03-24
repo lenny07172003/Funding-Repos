@@ -20,6 +20,8 @@ import {
 } from "@/lib/client-actions";
 import { runStackingAnalysis, runRevenueLendingAnalysis, getClientAnalyses, sendBlueprintToClient } from "@/lib/funding-analysis";
 import { parseManualCreditData } from "@/lib/credit-report-parser";
+import { onboardClientFull } from "@/lib/onboard-client-action";
+import { sendAgreementToClient } from "@/lib/agreement-actions";
 
 type CreditBureauData = {
   score: number | null;
@@ -1715,24 +1717,38 @@ export default function ClientDetailPage() {
 
 function ClientLoginPanel({ clientId, clientEmail, onCreated }: { clientId: string; clientEmail: string; onCreated: () => void }) {
   const [showForm, setShowForm] = useState(false);
-  const [email, setEmail] = useState(clientEmail);
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  async function handleCreate(e: React.FormEvent) {
+  async function handleFullOnboard(e: React.FormEvent) {
     e.preventDefault();
-    if (!email || !password) return;
+    if (!password) return;
     setLoading(true);
     setMessage(null);
     try {
-      await createClientLogin(clientId, { email, password });
-      setMessage({ type: "success", text: `Login created! Client can sign in at /login with ${email}` });
+      const result = await onboardClientFull(clientId, password);
+      setMessage({
+        type: "success",
+        text: `Onboarding email sent to ${result.sentTo}! Includes: portal login, funding agreement, business profile form, and document checklist.`,
+      });
       setShowForm(false);
       setPassword("");
       onCreated();
     } catch (err: any) {
-      setMessage({ type: "error", text: err.message || "Failed to create login" });
+      setMessage({ type: "error", text: err.message || "Failed to onboard client" });
+    }
+    setLoading(false);
+  }
+
+  async function handleSendAgreementOnly() {
+    setLoading(true);
+    setMessage(null);
+    try {
+      const result = await sendAgreementToClient(clientId);
+      setMessage({ type: "success", text: `Agreement sent to ${result.sentTo}` });
+    } catch (err: any) {
+      setMessage({ type: "error", text: err.message });
     }
     setLoading(false);
   }
@@ -1740,14 +1756,14 @@ function ClientLoginPanel({ clientId, clientEmail, onCreated }: { clientId: stri
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-5">
       <div className="flex items-center gap-3 mb-3">
-        <div className="w-9 h-9 bg-purple-100 rounded-lg flex items-center justify-center">
-          <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+        <div className="w-9 h-9 bg-emerald-100 rounded-lg flex items-center justify-center">
+          <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
           </svg>
         </div>
         <div>
-          <h3 className="font-semibold text-gray-900">Client Portal Access</h3>
-          <p className="text-xs text-gray-500">Create login credentials so the client can access their portal</p>
+          <h3 className="font-semibold text-gray-900">Client Onboarding</h3>
+          <p className="text-xs text-gray-500">Send portal login, agreement, business form, and document checklist in one email</p>
         </div>
       </div>
 
@@ -1758,22 +1774,35 @@ function ClientLoginPanel({ clientId, clientEmail, onCreated }: { clientId: stri
       )}
 
       {!showForm ? (
-        <button onClick={() => setShowForm(true)} className="btn-secondary text-sm w-full">
-          Create Client Login
-        </button>
+        <div className="space-y-2">
+          <button onClick={() => setShowForm(true)} className="btn-primary text-sm w-full">
+            Send Full Onboarding Package
+          </button>
+          <button onClick={handleSendAgreementOnly} disabled={loading} className="btn-secondary text-sm w-full disabled:opacity-50">
+            {loading ? "Sending..." : "Resend Agreement Only"}
+          </button>
+        </div>
       ) : (
-        <form onSubmit={handleCreate} className="space-y-3">
+        <form onSubmit={handleFullOnboard} className="space-y-3">
+          <p className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
+            This will send the client an email with: <strong>portal login credentials</strong>, <strong>funding agreement to sign</strong>,
+            <strong> business profile form</strong>, and a <strong>document checklist</strong> (Articles of Org, EIN, 3mo statements).
+          </p>
           <div>
-            <label className="label">Client Email</label>
-            <input className="input-field" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </div>
-          <div>
-            <label className="label">Temporary Password</label>
-            <input className="input-field" type="text" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="Client will change this on first login" />
+            <label className="label">Set Temporary Password for Client</label>
+            <input
+              className="input-field"
+              type="text"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={8}
+              placeholder="Min 8 characters — client will change after first login"
+            />
           </div>
           <div className="flex gap-2">
             <button type="submit" disabled={loading} className="btn-primary text-sm flex-1 disabled:opacity-50">
-              {loading ? "Creating..." : "Create Login"}
+              {loading ? "Sending..." : "Send Onboarding Email"}
             </button>
             <button type="button" onClick={() => { setShowForm(false); setMessage(null); }} className="btn-secondary text-sm">
               Cancel
